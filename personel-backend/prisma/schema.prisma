@@ -1,0 +1,158 @@
+// Prisma şeması — dev: SQLite, prod: provider'ı "postgresql" yapıp DATABASE_URL değiştir.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   // ik | mu | su
+  createdAt    DateTime @default(now())
+}
+
+model Branch {
+  id           Int        @id @default(autoincrement())
+  name         String
+  city         String?
+  mode         String     @default("kiosk") // kiosk | hibrit | saha
+  shift        String     @default("09:00 – 18:00")
+  lat          Float?
+  lng          Float?
+  radius       Int        @default(100) // konum sınırı yarıçapı (metre)
+  username     String?    @unique
+  passwordHash String?
+  managerPin   String?    // kiosk müdür PIN'i (hash'siz, demo)
+  employees    Employee[]
+  punches      Punch[]
+  devices      Device[]
+  createdAt    DateTime   @default(now())
+}
+
+model Device {
+  id        Int      @id @default(autoincrement())
+  branchId  Int
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  code      String   @unique // TBL-xxxx
+  label     String?  // kullanım yeri: Giriş, Fabrika, Kasa vb.
+  status    String   @default("active") // active | revoked
+  backup    Boolean  @default(false)
+  punches   Punch[]
+  createdAt DateTime @default(now())
+}
+
+model Shift {
+  id        Int        @id @default(autoincrement())
+  name      String
+  start     String     // "09:00"
+  end       String     // "18:00"
+  overnight Boolean    @default(false)
+  breakMin  Int        @default(60)
+  employees Employee[]
+  createdAt DateTime   @default(now())
+}
+
+model Employee {
+  id           Int             @id @default(autoincrement())
+  tc           String          @unique // TC kimlik no — giriş kimliği
+  name         String
+  phone        String?
+  address      String?
+  dept         String?
+  role         String?
+  sicil        String?
+  passwordHash String
+  status       String          @default("pending") // pending | active | offboarding
+  isManager    Boolean         @default(false) // şube yetkilisi — günlük kiosk kodunu görür
+  startDate    DateTime?
+  exitDate     DateTime?
+  exitReason   String?
+  branchId     Int?
+  branch       Branch?         @relation(fields: [branchId], references: [id])
+  shiftId      Int?
+  shift        Shift?          @relation(fields: [shiftId], references: [id])
+  punches      Punch[]
+  requests     Request[]
+  consents     ConsentRecord[]
+  dataRequests DataRequest[]
+  createdAt    DateTime        @default(now())
+}
+
+model ConsentRecord {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  version    String
+  acceptedAt DateTime @default(now())
+}
+
+model DataRequest {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  type       String   // access | rectify | erase
+  note       String?
+  status     String   @default("pending") // pending | done
+  createdAt  DateTime @default(now())
+}
+
+model PayrollPeriod {
+  id        Int       @id @default(autoincrement())
+  month     String    @unique // "2026-06"
+  status    String    @default("open") // open | closed
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Punch {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  branchId   Int
+  branch     Branch   @relation(fields: [branchId], references: [id])
+  deviceId   Int?     // hangi ekrandan/cihazdan okutuldu
+  device     Device?  @relation(fields: [deviceId], references: [id])
+  action     String   // enter | exit | break-out | break-in
+  serverTime DateTime @default(now()) // otoritatif zaman damgası
+  status     String   @default("ok")  // ok | review | confirmed (müdür onayladı)
+  source     String   @default("qr")  // qr | manual
+  createdAt  DateTime @default(now())
+}
+
+model Request {
+  id               Int       @id @default(autoincrement())
+  employeeId       Int
+  employee         Employee  @relation(fields: [employeeId], references: [id])
+  kind             String    // leave | fix
+  type             String
+  detail           String?
+  status           String    @default("pending") // pending | approved | rejected
+  leaveStart       String?   // izin başlangıcı YYYY-MM-DD (kind=leave)
+  leaveEnd         String?   // izin bitişi YYYY-MM-DD
+  branchId         Int?      // talebi işleyecek şubenin müdürü
+  stage            String    @default("manager") // manager | admin | done
+  managerRec       String?   // approve | reject (müdür kararı/önerisi)
+  managerNote      String?
+  managerDecidedAt DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  actor     String
+  kind      String
+  action    String
+  detail    String?
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String // JSON
+}

@@ -1,0 +1,26 @@
+# bağımlılıklar
+node_modules/
+
+# ortam / sırlar
+.env
+.env.local
+.env.*.local
+
+# expo / native derleme
+.expo/
+ios/
+android/
+
+# derleme çıktıları
+dist/
+build/
+web-build/
+
+# SQLite veritabanı (yerel)
+*.db
+*.db-journal
+prisma/dev.db
+
+# log / sistem
+*.log
+.DS_Store

@@ -1,0 +1,229 @@
+/* ============================================================
+   ÇALIŞAN PDKS — Tasarım Sistemi (tek, tutarlı)
+   Temiz & nötr SaaS · derin teal · açık tema · WCAG AA
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+:root {
+  /* — Marka (derin teal) — */
+  --brand-50:  #e8f2f2;
+  --brand-100: #c8e2e2;
+  --brand-200: #97c8c8;
+  --brand-300: #5fa9a9;
+  --brand-500: #138181;
+  --brand-600: #0e6b6b;   /* PRIMARY */
+  --brand-700: #0b5555;
+  --brand-800: #083f3f;
+  /* tone alias'ları (var(--brand-bg)/--brand-ink/--brand kalıbı için) */
+  --brand: #0e6b6b;  --brand-bg: #e8f2f2;  --brand-ink: #0b5555;  --brand-ring: #c8e2e2;
+
+  /* — Nötr (soğuk, çok düşük doygunluk) — */
+  --bg:            #eef1f1;   /* sahne / cihaz dışı */
+  --surface:       #ffffff;
+  --surface-2:     #f6f8f8;   /* hafif inset */
+  --surface-3:     #eef2f2;
+  --border:        #e4e9e9;
+  --border-strong: #d2dada;
+  --ink:           #15201f;   /* birincil metin */
+  --ink-2:         #51605d;   /* ikincil */
+  --ink-3:         #899593;   /* üçüncül / placeholder */
+
+  /* — Durum semantiği (HER YÜZEYDE AYNI) — */
+  --ok:        #1f8a5b;  --ok-bg:  #e6f4ec;  --ok-ink:  #155e3e;  --ok-ring: #b6e0c9;
+  --warn:      #b3730c;  --warn-bg:#faf0db;  --warn-ink:#75490a;  --warn-ring:#ecd29a;
+  --neu:       #6b7775;  --neu-bg: #eef1f1;  --neu-ink: #434c4b;  --neu-ring:#d8dede;
+  --err:       #c5372b;  --err-bg: #fbeae8;  --err-ink: #8d251c;  --err-ring:#eebcb6;
+
+  /* — Radius — */
+  --r-xs: 8px; --r-sm: 11px; --r-md: 14px; --r-lg: 20px; --r-xl: 26px; --r-2xl: 34px; --r-full: 999px;
+
+  /* — Gölge (yumuşak, sakin) — */
+  --sh-sm: 0 1px 2px rgba(16,40,38,.05), 0 1px 3px rgba(16,40,38,.04);
+  --sh-md: 0 2px 6px rgba(16,40,38,.06), 0 6px 16px rgba(16,40,38,.05);
+  --sh-lg: 0 8px 24px rgba(16,40,38,.08), 0 18px 48px rgba(16,40,38,.07);
+  --sh-brand: 0 6px 18px rgba(14,107,107,.28);
+
+  --ease: cubic-bezier(.22,.61,.36,1);
+}
+
+* { box-sizing: border-box; }
+
+.app-font {
+  font-family: 'Geist', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.mono { font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 0; }
+
+/* ============================================================
+   TİPOGRAFİ ÖLÇEĞİ
+   ============================================================ */
+.t-counter { font-size: 60px; font-weight: 700; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.t-h1   { font-size: 28px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; }
+.t-h2   { font-size: 22px; font-weight: 650; line-height: 1.2;  letter-spacing: -0.02em; }
+.t-h3   { font-size: 18px; font-weight: 600; line-height: 1.3;  letter-spacing: -0.015em; }
+.t-body { font-size: 16px; font-weight: 400; line-height: 1.5; }
+.t-bodys{ font-size: 16px; font-weight: 600; line-height: 1.45; }
+.t-sm   { font-size: 14px; font-weight: 500; line-height: 1.4; }
+.t-cap  { font-size: 13px; font-weight: 500; line-height: 1.35; }
+.t-mono-label { font-family:'Geist Mono', monospace; font-size: 11.5px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+
+.ink-2 { color: var(--ink-2); }
+.ink-3 { color: var(--ink-3); }
+.tnum  { font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   BUTON
+   ============================================================ */
+.btn {
+  font-family: inherit; cursor: pointer; border: none; outline: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  font-weight: 600; letter-spacing: -0.01em; white-space: nowrap;
+  border-radius: var(--r-md); transition: transform .12s var(--ease), background .15s, box-shadow .15s, border-color .15s;
+  -webkit-tap-highlight-color: transparent; user-select: none;
+}
+.btn:active { transform: scale(.975); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.btn-primary { background: var(--brand-600); color: #fff; height: 52px; padding: 0 22px; font-size: 16px; box-shadow: var(--sh-sm); }
+.btn-primary:hover { background: var(--brand-700); }
+
+.btn-ghost { background: var(--surface-2); color: var(--ink); height: 52px; padding: 0 22px; font-size: 16px; border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--surface-3); }
+
+.btn-quiet { background: transparent; color: var(--brand-700); height: 44px; padding: 0 14px; font-size: 15px; }
+.btn-quiet:hover { background: var(--brand-50); }
+
+/* Dev eylem butonu — 3 saniye kuralı / büyük dokunma hedefi (min 64px) */
+.btn-action {
+  width: 100%; height: 80px; border-radius: var(--r-xl);
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  font-size: 22px; font-weight: 650; letter-spacing: -0.02em; color: #fff;
+  border: none; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: transform .12s var(--ease), box-shadow .2s, background .2s;
+}
+.btn-action:active { transform: scale(.98); }
+.btn-action.enter { background: var(--brand-600); box-shadow: var(--sh-brand); }
+.btn-action.enter:hover { background: var(--brand-700); }
+.btn-action.exit  { background: var(--ink); box-shadow: 0 6px 18px rgba(21,32,31,.28); }
+.btn-action.exit:hover { background: #000; }
+
+.btn-break {
+  width: 100%; height: 56px; border-radius: var(--r-lg);
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  font-size: 16px; font-weight: 600; cursor: pointer; border: 1px solid var(--warn-ring);
+  background: var(--warn-bg); color: var(--warn-ink); transition: transform .12s var(--ease), background .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-break:active { transform: scale(.98); }
+
+/* ============================================================
+   KART
+   ============================================================ */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); }
+.row-click { transition: background .12s ease; }
+.row-click:hover { background: var(--surface-2) !important; }
+.notif-item { transition: background .12s ease; }
+.notif-item:hover { background: var(--surface-2) !important; }
+.card-pad { padding: 18px; }
+.card-flat { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-lg); }
+
+/* ============================================================
+   DURUM ÇİPİ / ROZET
+   ============================================================ */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 10px; border-radius: var(--r-full);
+  font-size: 12.5px; font-weight: 600; letter-spacing: -0.005em; white-space: nowrap;
+}
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.chip.ok   { background: var(--ok-bg);   color: var(--ok-ink);   } .chip.ok .dot{background:var(--ok);}
+.chip.warn { background: var(--warn-bg); color: var(--warn-ink); } .chip.warn .dot{background:var(--warn);}
+.chip.neu  { background: var(--neu-bg);  color: var(--neu-ink);  } .chip.neu .dot{background:var(--neu);}
+.chip.err  { background: var(--err-bg);  color: var(--err-ink);  } .chip.err .dot{background:var(--err);}
+.chip.brand{ background: var(--brand-50);color: var(--brand-700);} .chip.brand .dot{background:var(--brand-600);}
+
+/* ============================================================
+   ALAN (input/field)
+   ============================================================ */
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field-label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.input {
+  height: 52px; border-radius: var(--r-md); border: 1.5px solid var(--border-strong);
+  background: var(--surface); padding: 0 15px; font-size: 16px; font-family: inherit; color: var(--ink);
+  transition: border-color .15s, box-shadow .15s; outline: none; width: 100%;
+}
+.input::placeholder { color: var(--ink-3); }
+.input:focus { border-color: var(--brand-500); box-shadow: 0 0 0 3px var(--brand-50); }
+.input.readonly { background: var(--surface-2); color: var(--ink-2); border-style: solid; }
+
+/* ============================================================
+   AVATAR + placeholder görseller
+   ============================================================ */
+.avatar { border-radius: 50%; overflow: hidden; background: var(--brand-100); color: var(--brand-700);
+  display: flex; align-items: center; justify-content: center; font-weight: 650; flex: none; }
+.ph {
+  background-color: var(--surface-2);
+  background-image: repeating-linear-gradient(135deg, transparent 0 9px, rgba(14,107,107,.05) 9px 10px);
+  border: 1px dashed var(--border-strong); display: flex; align-items: center; justify-content: center;
+  color: var(--ink-3); text-align: center;
+}
+
+/* ============================================================
+   LİSTE SATIRI
+   ============================================================ */
+.row { display: flex; align-items: center; gap: 13px; padding: 15px 16px; background: var(--surface); }
+.row + .row { border-top: 1px solid var(--border); }
+.row-press { cursor: pointer; transition: background .12s; -webkit-tap-highlight-color: transparent; }
+.row-press:active { background: var(--surface-2); }
+
+/* ============================================================
+   TAB BAR (alt navigasyon)
+   ============================================================ */
+.tabbar {
+  display: flex; background: rgba(255,255,255,.9); backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border-top: 1px solid var(--border); padding: 7px 8px 6px;
+}
+.tab { flex: 1; background: none; border: none; cursor: pointer; display: flex; flex-direction: column;
+  align-items: center; gap: 4px; padding: 6px 0 2px; color: var(--ink-3);
+  font-family: inherit; font-size: 11px; font-weight: 600; transition: color .15s; -webkit-tap-highlight-color: transparent; }
+.tab.active { color: var(--brand-600); }
+.tab svg { width: 25px; height: 25px; }
+
+/* ============================================================
+   ANİMASYON YARDIMCILARI
+   ============================================================ */
+/* Animasyonlar: DİNLENME DURUMU HER ZAMAN GÖRÜNÜR olmalı (donmuş karede de).
+   Bu yüzden opacity:0/scale:0 başlangıcı YOK — yalnızca transform ile giriş. */
+@keyframes pop-in { 0% { transform: scale(.84); } 55% { transform: scale(1.05); } 100% { transform: scale(1); } }
+@keyframes fade-up { from { transform: translateY(9px); } to { transform: none; } }
+@keyframes slide-in { from { transform: translateX(26px); } to { transform: none; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse-soft { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+@keyframes scan-sweep { 0% { top: 6%; } 50% { top: 92%; } 100% { top: 6%; } }
+@media (prefers-reduced-motion: no-preference) {
+  .anim-pop  { animation: pop-in .42s var(--ease) both; }
+  .anim-up   { animation: fade-up .4s var(--ease) both; }
+  .anim-up-1 { animation: fade-up .4s var(--ease) .06s both; }
+  .anim-up-2 { animation: fade-up .4s var(--ease) .12s both; }
+  .anim-up-3 { animation: fade-up .4s var(--ease) .18s both; }
+}
+
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: pulse-soft 1.6s ease-in-out infinite; }
+.spinner { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--brand-100); border-top-color: var(--brand-600); animation: spin .8s linear infinite; }
+
+/* utility */
+.col { display: flex; flex-direction: column; }
+.rowx { display: flex; align-items: center; }
+.between { justify-content: space-between; }
+.center { align-items: center; justify-content: center; }
+.gap4{gap:4px}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}.gap14{gap:14px}.gap16{gap:16px}.gap20{gap:20px}.gap24{gap:24px}
+.grow { flex: 1; }
+.full { width: 100%; }
+.tcenter { text-align: center; }
+
+::-webkit-scrollbar { width: 0; height: 0; }

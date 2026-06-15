@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "personel",
+    "slug": "personel",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ozanbalcioglu.calisanpdks",
+      "infoPlist": {
+        "UIBackgroundModes": ["location"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.ozanbalcioglu.calisanpdks",
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Girişin doğru şubede yapıldığını doğrulamak ve kiosk modunu yalnızca şube konumunda açmak için konum bilginiz kullanılır.",
+          "locationAlwaysAndWhenInUsePermission": "Vardiya başında giriş, vardiya bitiminde çıkış ve mola hatırlatmalarını yapabilmek için uygulama kapalıyken de şubeye giriş/çıkışınız algılanır.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "QR kodu okutarak giriş/çıkış yapabilmeniz için kamera kullanılır."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png"
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}

@@ -1,0 +1,3 @@
+body { margin: 0; background: var(--bg); }
+#root { min-height: 100vh; }
+button { font-family: inherit; }

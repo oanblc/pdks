@@ -1,0 +1,1117 @@
+// server.ts — Fastify API: auth + çekirdek endpoint'ler (mobil + web aynı veriyi paylaşır)
+import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
+import jwt from '@fastify/jwt';
+import bcrypt from 'bcryptjs';
+import { createHmac } from 'crypto';
+import { z } from 'zod';
+import { prisma } from './db.js';
+import { dailyRecords, monthRange, weekKey, shiftExpectedMin, workDayKey, type DayOpts } from './compute.js';
+
+const KVKK_VERSION = 'v2.1';
+const currentMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+
+const PORT = Number(process.env.PORT || 4000);
+const PROD = process.env.NODE_ENV === 'production';
+// Üretimde tahmin edilebilir varsayılan sır kullanılamaz — boot'ta zorunlu.
+if (PROD && !process.env.JWT_SECRET) { console.error('FATAL: production ortamında JWT_SECRET zorunludur.'); process.exit(1); }
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+const TOKEN_TTL = '30d'; // token süresi — süresiz token riski yerine yenilenebilir 30 gün
+
+const app = Fastify({ logger: true });
+
+// Yayında CSP açık (makul varsayılan direktiflerle); geliştirmede kapalı (Vite/HMR rahatlığı için)
+await app.register(helmet, { contentSecurityPolicy: PROD ? undefined : false });
+// CORS: ALLOWED_ORIGINS (virgüllü liste) verilmişse yalnız o originlere izin ver; verilmezse dev'de tüm originler.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+if (PROD && ALLOWED_ORIGINS.length === 0) console.warn('UYARI: production ortamında ALLOWED_ORIGINS tanımlı değil — CORS tüm originlere açık kalır.');
+await app.register(cors, {
+  origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : true,
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+});
+await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
+await app.register(jwt, { secret: JWT_SECRET });
+
+// Gövdesiz POST'lar (onayla, kapat, iptal vb.) tarayıcıdan content-type:application/json
+// ama boş body ile gelir; Fastify varsayılanı bunu 400 ile reddeder. Boş gövdeyi {} say.
+app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body: string, done) => {
+  if (!body) return done(null, {});
+  try { done(null, JSON.parse(body)); } catch (e) { done(e as Error, undefined); }
+});
+
+// ── auth yardımcıları ──
+type JwtUser = { sub: number; kind: 'admin' | 'employee' | 'branch'; role?: string; deviceId?: number };
+async function auth(req: any, reply: any, kind?: 'admin' | 'employee' | 'branch') {
+  try { await req.jwtVerify(); } catch { return reply.code(401).send({ error: 'Oturum gerekli' }); }
+  if (kind && (req.user as JwtUser).kind !== kind) return reply.code(403).send({ error: 'Yetkisiz' });
+}
+const requireAdmin = (req: any, reply: any) => auth(req, reply, 'admin');
+const requireEmployee = (req: any, reply: any) => auth(req, reply, 'employee');
+
+function bad(reply: any, msg: string) { return reply.code(400).send({ error: msg }); }
+function startOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+
+// ── Geofence: çalışan basışı yalnızca şube konumunun bu yarıçapı içinde geçerli ──
+const PUNCH_RADIUS_M = 100;
+function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000, toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat), dLng = toRad(bLng - aLng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function statusFromPunches(punches: { action: string; serverTime: Date }[]) {
+  let status: 'outside' | 'inside' | 'break' = 'outside';
+  let entryTime: Date | null = null, breakStart: Date | null = null;
+  for (const p of punches) {
+    if (p.action === 'enter') { status = 'inside'; entryTime = p.serverTime; breakStart = null; }
+    else if (p.action === 'exit') { status = 'outside'; entryTime = null; breakStart = null; }
+    else if (p.action === 'break-out') { status = 'break'; breakStart = p.serverTime; }
+    else if (p.action === 'break-in') { status = 'inside'; breakStart = null; }
+  }
+  return { status, entryTime, breakStart };
+}
+
+app.get('/api/health', async () => ({ ok: true, time: new Date().toISOString() }));
+
+/* ───────── AUTH ───────── */
+app.post('/api/admin/login', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+  const p = z.object({ email: z.string().email(), password: z.string().min(1) }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'E-posta ve şifre gerekli');
+  const admin = await prisma.adminUser.findUnique({ where: { email: p.data.email.toLowerCase() } });
+  if (!admin || !(await bcrypt.compare(p.data.password, admin.passwordHash)))
+    return reply.code(401).send({ error: 'E-posta veya şifre hatalı' });
+  const token = app.jwt.sign({ sub: admin.id, kind: 'admin', role: admin.role }, { expiresIn: TOKEN_TTL });
+  return { token, admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role } };
+});
+
+// TC kimlik numarası algoritmik doğrulaması (11 hane, ilk hane 0 değil, kontrol haneleri tutarlı)
+function isValidTC(tc: string): boolean {
+  if (!/^\d{11}$/.test(tc) || tc[0] === '0') return false;
+  const d = tc.split('').map(Number);
+  const odd = d[0] + d[2] + d[4] + d[6] + d[8];
+  const even = d[1] + d[3] + d[5] + d[7];
+  if (((odd * 7 - even) % 10 + 10) % 10 !== d[9]) return false;
+  return d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
+}
+const PHONE = /^0?5\d{9}$/; // Türk cep telefonu (05XX...)
+app.post('/api/employee/register', { config: { rateLimit: { max: 40, timeWindow: '1 minute' } } }, async (req, reply) => {
+  const p = z.object({
+    tc: z.string().regex(/^\d{11}$/, 'TC 11 haneli olmalı'),
+    name: z.string().min(2), phone: z.string().optional(), address: z.string().optional(),
+    branchId: z.number().int().optional(), password: z.string().min(4),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  if (!isValidTC(p.data.tc)) return bad(reply, 'Geçersiz TC kimlik numarası');
+  if (p.data.phone && !PHONE.test(p.data.phone.replace(/\s/g, ''))) return bad(reply, 'Telefon 05XX ile başlayan 11 hane olmalı');
+  if (p.data.branchId != null && !(await prisma.branch.findUnique({ where: { id: p.data.branchId } }))) return bad(reply, 'Geçersiz şube');
+  if (await prisma.employee.findUnique({ where: { tc: p.data.tc } }))
+    return bad(reply, 'Bu TC kimlik no ile kayıt zaten var');
+  const passwordHash = await bcrypt.hash(p.data.password, 10);
+  await prisma.employee.create({ data: {
+    tc: p.data.tc, name: p.data.name, phone: p.data.phone, address: p.data.address,
+    branchId: p.data.branchId ?? null, passwordHash, status: 'pending',
+  } });
+  return { ok: true };
+});
+
+app.post('/api/employee/login', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+  const p = z.object({ tc: z.string().min(1), password: z.string().min(1) }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'TC ve şifre gerekli');
+  const emp = await prisma.employee.findUnique({ where: { tc: p.data.tc }, include: { branch: true, shift: true } });
+  if (!emp || !(await bcrypt.compare(p.data.password, emp.passwordHash)))
+    return reply.code(401).send({ error: 'TC veya şifre hatalı' });
+  if (emp.status === 'pending') return reply.code(403).send({ error: 'Kaydınız henüz onaylanmadı' });
+  if (emp.status !== 'active') return reply.code(403).send({ error: 'Hesabınız aktif değil' });
+  const token = app.jwt.sign({ sub: emp.id, kind: 'employee' }, { expiresIn: TOKEN_TTL });
+  return { token, employee: publicEmployee(emp) };
+});
+
+function publicEmployee(e: any) {
+  return { id: e.id, tc: e.tc, name: e.name, phone: e.phone, dept: e.dept, role: e.role, sicil: e.sicil, status: e.status, isManager: e.isManager ?? false, branch: e.branch?.name ?? null, branchId: e.branchId, shiftId: e.shiftId, shift: e.shift ? `${e.shift.start} – ${e.shift.end}` : null, shiftStart: e.shift?.start ?? null, shiftEnd: e.shift?.end ?? null, breakMin: e.shift?.breakMin ?? null, overnight: e.shift?.overnight ?? false, startDate: e.startDate, exitDate: e.exitDate, exitReason: e.exitReason };
+}
+
+// Çakışmayan sicil üret: mevcut en yüksek sayısal sicilin bir fazlası (taban 10400).
+async function nextSicil(): Promise<string> {
+  const emps = await prisma.employee.findMany({ select: { sicil: true } });
+  let max = 10400;
+  for (const e of emps) { const n = Number(e.sicil); if (Number.isFinite(n) && n > max) max = n; }
+  return String(max + 1);
+}
+
+/* ───────── ÇALIŞAN (mobil) ───────── */
+app.get('/api/branches', async (req: any) => {
+  // Konum (geofence merkezi/yarıçapı) sadece admin'e döner; public liste konum sızdırmaz.
+  let isAdmin = false;
+  try { await req.jwtVerify(); isAdmin = req.user?.kind === 'admin'; } catch { /* anonim/çalışan */ }
+  const branches = await prisma.branch.findMany({ orderBy: { id: 'asc' } });
+  return branches.map(b => isAdmin
+    ? { id: b.id, name: b.name, city: b.city, shift: b.shift, lat: b.lat, lng: b.lng, radius: b.radius }
+    : { id: b.id, name: b.name, city: b.city, shift: b.shift });
+});
+
+app.get('/api/me', { preHandler: requireEmployee }, async (req: any) => {
+  const emp = await prisma.employee.findUnique({ where: { id: req.user.sub }, include: { branch: true, shift: true } });
+  const punches = await prisma.punch.findMany({ where: { employeeId: req.user.sub, serverTime: { gte: startOfToday() } }, orderBy: { serverTime: 'asc' } });
+  const cfg = await getRiskCfg();
+  // Çalışanın kendi şubesinin geofence bilgisi (hatırlatmalar için) — yalnız kendi şubesi
+  const b = (emp as any)?.branch;
+  const branchGeo = b && b.lat != null && b.lng != null ? { lat: b.lat, lng: b.lng, radius: b.radius ?? 100 } : null;
+  // Yalnız şube yetkilisi bugünün kiosk kodunu görür
+  const kioskCode = emp?.isManager && emp?.branchId ? dailyKioskCode(emp.branchId, dKey(new Date())) : null;
+  return { employee: publicEmployee(emp), today: statusFromPunches(punches), lateToleranceMin: cfg.lateToleranceMin, branchGeo, kioskCode };
+});
+
+app.post('/api/punch', { preHandler: requireEmployee }, async (req: any, reply) => {
+  const p = z.object({
+    branchId: z.number().int(),
+    action: z.enum(['enter', 'exit', 'break-out', 'break-in']),
+    lat: z.number().min(-90).max(90).optional(),
+    lng: z.number().min(-180).max(180).optional(),
+    deviceCode: z.string().optional(), // okutulan ekranın/cihazın kodu (QR'dan)
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçersiz okutma');
+  // Çıkış sürecindeki/onaysız çalışan token'ı elinde olsa bile okutamaz.
+  const me = await prisma.employee.findUnique({ where: { id: req.user.sub } });
+  if (!me || me.status !== 'active') return reply.code(403).send({ error: 'Hesabınız aktif değil, okutma yapılamaz' });
+
+  // Onaylı izin günündeyse okutma yapamaz.
+  if (await isOnApprovedLeave(req.user.sub, dKey(new Date())))
+    return reply.code(403).send({ error: 'Bugün izinlisiniz; giriş-çıkış okutması yapılamaz.', code: 'ON_LEAVE' });
+
+  // ── Hangi ekrandan okutuldu: cihaz kodu verildiyse doğrula (şubeye ait + iptal değil) ──
+  let deviceId: number | null = null;
+  if (p.data.deviceCode) {
+    const dev = await prisma.device.findUnique({ where: { code: p.data.deviceCode } });
+    if (!dev || dev.branchId !== p.data.branchId) return reply.code(403).send({ error: 'Bu cihaz bu şubeye tanımlı değil' });
+    if (dev.status === 'revoked') return reply.code(403).send({ error: 'Bu ekran (cihaz) iptal edilmiş; okutma yapılamaz' });
+    deviceId = dev.id;
+  }
+
+  // ── Konum geofence: şube merkezi tanımlıysa, basış 100 m içinde olmalı ──
+  const branch = await prisma.branch.findUnique({ where: { id: p.data.branchId } });
+  if (!branch) return bad(reply, 'Şube bulunamadı');
+  if (branch.lat != null && branch.lng != null) {
+    if (p.data.lat == null || p.data.lng == null)
+      return reply.code(403).send({ error: 'Konum gerekli. Okutma için konum iznini açın.' });
+    const radius = branch.radius ?? PUNCH_RADIUS_M;
+    const d = distanceMeters(p.data.lat, p.data.lng, branch.lat, branch.lng);
+    if (d > radius)
+      return reply.code(403).send({ error: `İşletmeden uzaktasınız (~${Math.round(d)} m). Okutma yalnızca şube konumunun ${radius} m içinde yapılabilir.`, code: 'GEOFENCE', distance: Math.round(d) });
+  }
+  // ── İdempotency: 60 sn içinde aynı eylemin tekrarı yeni kayıt açmaz (çift okutma/double-punch) ──
+  const last = await prisma.punch.findFirst({ where: { employeeId: req.user.sub }, orderBy: { serverTime: 'desc' } });
+  if (last && last.action === p.data.action && Date.now() - +last.serverTime < 60_000)
+    return { ok: true, action: last.action, time: last.serverTime, duplicate: true };
+
+  // NOT: gerçek güvenlik dilimi — imzalı QR token doğrulaması burada eklenecek.
+  const punch = await prisma.punch.create({ data: {
+    employeeId: req.user.sub, branchId: p.data.branchId, deviceId, action: p.data.action, source: 'qr',
+  } });
+  return { ok: true, action: punch.action, time: punch.serverTime };
+});
+
+const DATEKEY = /^\d{4}-\d{2}-\d{2}$/;
+// Biçim regex'ten geçse de takvimsel geçerlilik (örn. 2026-02-31 reddedilsin) kontrol edilir
+function isRealDate(s: string): boolean {
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+app.post('/api/requests', { preHandler: requireEmployee }, async (req: any, reply) => {
+  const p = z.object({
+    kind: z.enum(['leave', 'fix']), type: z.string(), detail: z.string().optional(),
+    leaveStart: z.string().regex(DATEKEY).optional(), leaveEnd: z.string().regex(DATEKEY).optional(),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçersiz talep');
+  if (p.data.kind === 'leave') {
+    for (const v of [p.data.leaveStart, p.data.leaveEnd]) if (v && !isRealDate(v)) return bad(reply, 'Geçersiz tarih');
+  }
+  if (p.data.kind === 'leave' && p.data.leaveStart && p.data.leaveEnd && p.data.leaveEnd < p.data.leaveStart)
+    return bad(reply, 'Bitiş tarihi başlangıçtan önce olamaz');
+  const emp = await prisma.employee.findUnique({ where: { id: req.user.sub } });
+  // Talep önce çalışanın şubesinin müdürüne (kiosk) düşer
+  await prisma.request.create({ data: {
+    employeeId: req.user.sub, kind: p.data.kind, type: p.data.type, detail: p.data.detail,
+    leaveStart: p.data.kind === 'leave' ? p.data.leaveStart ?? null : null,
+    leaveEnd: p.data.kind === 'leave' ? p.data.leaveEnd ?? null : null,
+    branchId: emp?.branchId ?? null, stage: 'manager',
+  } });
+  return { ok: true };
+});
+
+// Onaylı izin günleri (YYYY-MM-DD kümesi) — belirli aralıkta
+const dKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Şubenin günlük kiosk kodu — deterministik (saklama yok), her gün (İstanbul) değişir.
+function dailyKioskCode(branchId: number, dateKey: string): string {
+  const h = createHmac('sha256', JWT_SECRET).update(`kiosk:${branchId}:${dateKey}`).digest('hex');
+  return String(parseInt(h.slice(0, 6), 16) % 10000).padStart(4, '0');
+}
+async function approvedLeaveDays(empId: number, startKey?: string, endKey?: string): Promise<Set<string>> {
+  const reqs = await prisma.request.findMany({ where: { employeeId: empId, kind: 'leave', status: 'approved', NOT: { leaveStart: null } } });
+  const set = new Set<string>();
+  for (const r of reqs) {
+    if (!r.leaveStart || !r.leaveEnd) continue;
+    let d = new Date(r.leaveStart + 'T00:00:00');
+    const end = new Date(r.leaveEnd + 'T00:00:00');
+    while (d <= end) {
+      const k = dKey(d);
+      if ((!startKey || k >= startKey) && (!endKey || k <= endKey)) set.add(k);
+      d = new Date(d.getTime() + 86400000);
+    }
+  }
+  return set;
+}
+async function isOnApprovedLeave(empId: number, dateKey: string): Promise<boolean> {
+  const r = await prisma.request.findFirst({ where: { employeeId: empId, kind: 'leave', status: 'approved', leaveStart: { lte: dateKey }, leaveEnd: { gte: dateKey } } });
+  return !!r;
+}
+
+// SLA: müdür bu kadar günde karar vermezse talep admin'e eskale olur
+const REQUEST_SLA_DAYS = 2;
+function effectiveStage(r: { stage: string; createdAt: Date; branchId: number | null }): string {
+  if (r.stage !== 'manager') return r.stage;
+  if (r.branchId == null) return 'admin'; // şubesiz → doğrudan admin
+  const ageDays = (Date.now() - +new Date(r.createdAt)) / 86400000;
+  return ageDays > REQUEST_SLA_DAYS ? 'admin' : 'manager';
+}
+
+/* ───────── YÖNETİCİ (web) ───────── */
+app.get('/api/dashboard', { preHandler: requireAdmin }, async () => {
+  const [branches, active, pending, todayPunches] = await Promise.all([
+    prisma.branch.findMany({ orderBy: { id: 'asc' } }),
+    prisma.employee.count({ where: { status: 'active' } }),
+    prisma.employee.count({ where: { status: 'pending' } }),
+    prisma.punch.findMany({ where: { serverTime: { gte: startOfToday() } }, select: { branchId: true, status: true, source: true } }),
+  ]);
+  // Şube başına bugün: okutma sayısı, bayraklı (review) ve manuel (asistlı) sayıları — gerçek
+  const agg: Record<number, { c: number; f: number; m: number }> = {};
+  for (const p of todayPunches) { const t = (agg[p.branchId] ||= { c: 0, f: 0, m: 0 }); t.c++; if (p.status === 'review') t.f++; if (p.source === 'manual') t.m++; }
+  const branchList = branches.map(b => ({ id: b.id, name: b.name, city: b.city, online: true, sync: 'şimdi', today: agg[b.id]?.c || 0, flagged: agg[b.id]?.f || 0, anomaly: agg[b.id]?.m || 0 }));
+  return {
+    stats: { branches: branches.length, activeEmployees: active, pendingEmployees: pending, todayPunches: todayPunches.length },
+    branches: branchList,
+  };
+});
+
+app.get('/api/employees', { preHandler: requireAdmin }, async () => {
+  const emps = await prisma.employee.findMany({ include: { branch: true }, orderBy: { id: 'asc' } });
+  const todayKey = dKey(new Date());
+  const onLeave = await prisma.request.findMany({
+    where: { kind: 'leave', status: 'approved', leaveStart: { lte: todayKey }, leaveEnd: { gte: todayKey } },
+    select: { employeeId: true },
+  });
+  const leaveSet = new Set(onLeave.map(r => r.employeeId));
+  return emps.map(e => ({ ...publicEmployee(e), onLeaveToday: leaveSet.has(e.id) }));
+});
+
+app.post('/api/employees/:id/approve', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const emp = await prisma.employee.findUnique({ where: { id } });
+  if (!emp) return reply.code(404).send({ error: 'Çalışan bulunamadı' });
+  const sicil = emp.sicil || await nextSicil();
+  const updated = await prisma.employee.update({ where: { id }, data: { status: 'active', sicil } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'onay', action: 'Kayıt onaylandı', detail: `${emp.name} · sicil ${sicil}` } });
+  return publicEmployee(updated);
+});
+
+app.get('/api/punches/today', { preHandler: requireAdmin }, async () => {
+  const punches = await prisma.punch.findMany({
+    where: { serverTime: { gte: startOfToday() } },
+    include: { employee: true, branch: true, device: true }, orderBy: { serverTime: 'asc' },
+  });
+  return punches.map(p => ({
+    id: p.id, name: p.employee.name, branch: p.branch.name, dept: p.employee.dept,
+    action: p.action, time: p.serverTime, status: p.status, source: p.source,
+    device: p.device ? (p.device.label || p.device.code) : null,
+  }));
+});
+
+app.get('/api/requests', { preHandler: requireAdmin }, async () => {
+  const reqs = await prisma.request.findMany({ include: { employee: { include: { branch: true } } }, orderBy: { createdAt: 'desc' } });
+  return reqs.map(r => {
+    const eff = effectiveStage(r);
+    const escalated = r.stage === 'manager' && eff === 'admin' && r.branchId != null;
+    return {
+      id: r.id, name: r.employee.name, branch: r.employee.branch?.name ?? null, kind: r.kind, type: r.type, detail: r.detail,
+      leaveStart: r.leaveStart, leaveEnd: r.leaveEnd,
+      status: r.status, stage: eff, escalated, managerRec: r.managerRec, managerNote: r.managerNote, createdAt: r.createdAt,
+    };
+  });
+});
+
+/* ───────── ŞUBE / KIOSK ───────── */
+async function requireBranch(req: any, reply: any) {
+  const r = await auth(req, reply, 'branch' as any);
+  if (reply.sent) return r;
+  // Token bir cihaza bağlıysa ve o cihaz iptal edildiyse, çalışan oturumu da anında düşsün.
+  const devId = (req.user as any).deviceId;
+  if (devId) {
+    const dev = await prisma.device.findUnique({ where: { id: devId } });
+    if (!dev || dev.status === 'revoked') return reply.code(403).send({ error: 'Bu cihaz uzaktan iptal edildi. Oturum sonlandırıldı.' });
+  }
+}
+async function requireBranchOrAdmin(req: any, reply: any) {
+  try { await req.jwtVerify(); } catch { return reply.code(401).send({ error: 'Oturum gerekli' }); }
+  const k = (req.user as JwtUser).kind;
+  if (k !== 'branch' && k !== 'admin') return reply.code(403).send({ error: 'Yetkisiz' });
+}
+function hmd(d: Date) { return new Date(d).toTimeString().slice(0, 5); }
+
+app.post('/api/branch/login', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+  const p = z.object({ username: z.string().min(1), password: z.string().min(1), deviceCode: z.string().optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Kullanıcı adı ve şifre gerekli');
+  const br = await prisma.branch.findUnique({ where: { username: p.data.username } });
+  if (!br || !br.passwordHash || !(await bcrypt.compare(p.data.password, br.passwordHash)))
+    return reply.code(401).send({ error: 'Kullanıcı adı veya şifre hatalı' });
+
+  // Cihaz kimliği gönderildiyse: bu şubeye ait + iptal edilmemiş olmalı.
+  let device: { id: number; code: string; backup: boolean } | null = null;
+  if (p.data.deviceCode) {
+    const dev = await prisma.device.findUnique({ where: { code: p.data.deviceCode } });
+    if (!dev || dev.branchId !== br.id) return reply.code(403).send({ error: 'Bu cihaz bu şubeye tanımlı değil' });
+    if (dev.status === 'revoked') return reply.code(403).send({ error: 'Bu cihaz uzaktan iptal edilmiş. Kiosk açılamaz; yöneticinizle iletişime geçin.' });
+    device = { id: dev.id, code: dev.code, backup: dev.backup };
+  }
+
+  const token = app.jwt.sign({ sub: br.id, kind: 'branch', deviceId: device?.id }, { expiresIn: TOKEN_TTL });
+  return {
+    token,
+    branch: { id: br.id, name: br.name, city: br.city, lat: br.lat, lng: br.lng },
+    device: device ? { code: device.code, role: device.backup ? 'backup' : 'primary' } : null,
+  };
+});
+
+// Kiosk ilk kurulum: tabletin GPS'ini şube merkezi (geofence) olarak kaydet.
+// Güvenlik: yalnızca şubenin henüz konumu yoksa otomatik yazar (force ile override panelden).
+app.post('/api/branch/location', { preHandler: requireBranch }, async (req: any, reply) => {
+  const p = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), force: z.boolean().optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçerli konum gerekli');
+  const br = await prisma.branch.findUnique({ where: { id: req.user.sub } });
+  if (!br) return reply.code(404).send({ error: 'Şube bulunamadı' });
+  if (br.lat != null && br.lng != null && !p.data.force)
+    return { ok: true, set: false, lat: br.lat, lng: br.lng }; // zaten tanımlı, dokunma
+  const u = await prisma.branch.update({ where: { id: br.id }, data: { lat: p.data.lat, lng: p.data.lng } });
+  await prisma.auditLog.create({ data: { actor: 'şube', kind: 'cihaz', action: 'Şube konumu kaydedildi', detail: `${u.name} · ${p.data.lat.toFixed(5)}, ${p.data.lng.toFixed(5)}` } });
+  return { ok: true, set: true, lat: u.lat, lng: u.lng };
+});
+
+// Kiosk müdür inceleme — bugün gelenler (çalışan bazında özet)
+app.get('/api/branch/today', { preHandler: requireBranch }, async (req: any) => {
+  const punches = await prisma.punch.findMany({
+    where: { branchId: req.user.sub, serverTime: { gte: startOfToday() } },
+    include: { employee: true, device: true }, orderBy: { serverTime: 'asc' },
+  });
+  const byEmp = new Map<number, typeof punches>();
+  for (const p of punches) { const a = byEmp.get(p.employeeId) || []; a.push(p); byEmp.set(p.employeeId, a as any); }
+  return [...byEmp.entries()].map(([eid, ps]) => {
+    const st = statusFromPunches(ps);
+    const firstEnter = ps.find(p => p.action === 'enter');
+    const lastExit = [...ps].reverse().find(p => p.action === 'exit');
+    const last = ps[ps.length - 1];
+    const dev = (last as any).device;
+    return {
+      empId: eid, name: ps[0].employee.name, dept: ps[0].employee.dept,
+      in: firstEnter ? hmd(firstEnter.serverTime) : null,
+      out: st.status === 'outside' && lastExit ? hmd(lastExit.serverTime) : null,
+      status: st.status, lastPunchId: last.id, reviewState: last.status,
+      device: dev ? (dev.label || dev.code) : null,
+    };
+  });
+});
+
+// Okutma kaydı onay / itiraz (şube müdürü veya admin)
+app.post('/api/punches/:id/review', { preHandler: requireBranchOrAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const p = z.object({ status: z.enum(['ok', 'disputed']) }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçersiz durum');
+  // Şube yalnızca KENDİ basışını inceleyebilir (cross-branch IDOR koruması); admin hepsini.
+  const existing = await prisma.punch.findUnique({ where: { id } });
+  if (!existing) return reply.code(404).send({ error: 'Kayıt bulunamadı' });
+  if (req.user.kind === 'branch' && existing.branchId !== req.user.sub)
+    return reply.code(403).send({ error: 'Bu kayıt sizin şubenize ait değil' });
+  const punch = await prisma.punch.update({ where: { id }, data: { status: p.data.status === 'disputed' ? 'review' : 'confirmed' }, include: { employee: true } });
+  await prisma.auditLog.create({ data: {
+    actor: req.user.kind === 'branch' ? 'Şube müdürü' : (req.user.role || 'admin'),
+    kind: p.data.status === 'disputed' ? 'itiraz' : 'onay',
+    action: p.data.status === 'disputed' ? 'Kayıt itirazlı işaretlendi' : 'Kayıt onaylandı',
+    detail: punch.employee.name,
+  } });
+  return { ok: true };
+});
+
+/* ───────── TALEPLER ───────── */
+app.get('/api/requests/mine', { preHandler: requireEmployee }, async (req: any) => {
+  const rs = await prisma.request.findMany({ where: { employeeId: req.user.sub }, orderBy: { createdAt: 'desc' } });
+  return rs.map(r => ({ id: r.id, kind: r.kind, type: r.type, detail: r.detail, status: r.status, createdAt: r.createdAt }));
+});
+
+async function decideRequest(req: any, reply: any, status: 'approved' | 'rejected') {
+  const id = Number(req.params.id);
+  const r = await prisma.request.findUnique({ where: { id }, include: { employee: true } });
+  if (!r) return reply.code(404).send({ error: 'Talep bulunamadı' });
+  if (r.stage === 'done') return bad(reply, 'Talep zaten sonuçlanmış');
+  // Düzeltme talepleri müdürde biter; admin yalnızca admin kademesindeki (izin/eskale) talepleri sonuçlandırır (gözetim hariç override).
+  await prisma.request.update({ where: { id }, data: { status, stage: 'done' } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'onay', action: status === 'approved' ? 'Talep onaylandı (admin)' : 'Talep reddedildi (admin)', detail: `${r.employee.name} · ${r.type}` } });
+  return { ok: true };
+}
+app.post('/api/requests/:id/approve', { preHandler: requireAdmin }, (req, reply) => decideRequest(req, reply, 'approved'));
+app.post('/api/requests/:id/reject', { preHandler: requireAdmin }, (req, reply) => decideRequest(req, reply, 'rejected'));
+
+/* ───────── DENETİM KAYDI ───────── */
+app.get('/api/audit', { preHandler: requireAdmin }, async () => {
+  const a = await prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+  return a.map(x => ({ id: x.id, actor: x.actor, kind: x.kind, action: x.action, detail: x.detail, time: x.createdAt }));
+});
+
+/* ───────── VARDİYA ───────── */
+app.get('/api/shifts', { preHandler: requireAdmin }, async () => {
+  const shifts = await prisma.shift.findMany({ include: { _count: { select: { employees: true } } }, orderBy: { id: 'asc' } });
+  return shifts.map(s => ({ id: s.id, name: s.name, start: s.start, end: s.end, breakMin: s.breakMin, overnight: s.overnight, employees: s._count.employees }));
+});
+
+/* ───────── PUANTAJ (timesheet) ───────── */
+function shiftOpts(shift?: any): DayOpts { const overnight = !!shift?.overnight; return { overnight, expectedMin: shiftExpectedMin(shift), todayKey: workDayKey(new Date(), overnight) }; }
+
+async function employeeTimesheet(empId: number, start: Date, end: Date, label: string) {
+  const emp = await prisma.employee.findUnique({ where: { id: empId }, include: { shift: true } });
+  const punches = await prisma.punch.findMany({ where: { employeeId: empId, serverTime: { gte: start, lt: end } }, orderBy: { serverTime: 'asc' }, include: { device: true } });
+  const opts = shiftOpts(emp?.shift);
+  const days = dailyRecords(punches, opts) as any[];
+  // Her güne, o günkü ilk giriş okutmasının ekranını (cihazını) iliştir
+  const entryDev = new Map<string, string>();
+  for (const p of punches) {
+    if (p.action !== 'enter') continue;
+    const k = workDayKey(p.serverTime, opts.overnight);
+    const d = (p as any).device;
+    if (!entryDev.has(k) && d) entryDev.set(k, d.label || d.code);
+  }
+  for (const r of days) r.device = entryDev.get(r.date) ?? null;
+
+  // ── Onaylı izin günlerini puantaja işle (izinli) ──
+  const startKey = dKey(start);
+  const endKeyExcl = dKey(new Date(end.getTime() - 86400000)); // end üst sınır hariç → son dahil gün
+  const leaveSet = await approvedLeaveDays(empId, startKey, endKeyExcl);
+  const have = new Set(days.map(r => r.date));
+  for (const r of days) if (leaveSet.has(r.date)) { r.status = 'leave'; r.estimated = false; r.inProgress = false; r.flagged = false; }
+  for (const k of leaveSet) if (!have.has(k)) {
+    days.push({ date: k, day: Number(k.slice(8)), in: null, out: null, breakMin: 0, netMin: 0, diffMin: 0, status: 'leave', flagged: false, estimated: false, inProgress: false, device: null });
+  }
+  days.sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  const netMin = days.reduce((s, r) => s + r.netMin, 0);
+  const overtimeMin = days.reduce((s, r) => s + Math.max(0, r.diffMin), 0);
+  const missing = days.filter(r => r.status === 'missing' && !r.inProgress).length;
+  const leave = days.filter(r => r.status === 'leave').length;
+  const present = days.filter(r => r.status !== 'leave').length;
+  return { employee: emp ? { id: emp.id, name: emp.name, dept: emp.dept, sicil: emp.sicil } : null, range: label, days, summary: { netMin, overtimeMin, present, missing, leave } };
+}
+
+// Sorgudan dönem aralığı: ?from=&to= (gün bazlı) veya ?month= (aylık) ya da bu ay
+const isDate = (v: any) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+function rangeFromQuery(q: any): { start: Date; end: Date; label: string } {
+  if (isDate(q?.from) && isDate(q?.to)) {
+    let a = new Date(q.from + 'T00:00:00'), b = new Date(q.to + 'T00:00:00');
+    if (a > b) [a, b] = [b, a];
+    const end = new Date(b); end.setDate(end.getDate() + 1); // bitiş günü dahil
+    return { start: a, end, label: q.from === q.to ? q.from : `${q.from} – ${q.to}` };
+  }
+  const month = (q?.month as string) || currentMonth();
+  const { start, end } = monthRange(month);
+  return { start, end, label: month };
+}
+
+app.get('/api/employees/:id/timesheet', { preHandler: requireAdmin }, async (req: any) => {
+  const { start, end, label } = rangeFromQuery(req.query);
+  return employeeTimesheet(Number(req.params.id), start, end, label);
+});
+
+// Belirli bir günün bayrağını çöz: o gün 'review' olan okutmaları onayla (ok) veya itirazlı bırak (review)
+app.post('/api/employees/:id/resolve-flag', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const empId = Number(req.params.id);
+  const p = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), action: z.enum(['approve', 'dispute']) }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  const emp = await prisma.employee.findUnique({ where: { id: empId } });
+  if (!emp) return reply.code(404).send({ error: 'Çalışan bulunamadı' });
+  const start = new Date(p.data.date + 'T00:00:00');
+  const end = new Date(start); end.setDate(end.getDate() + 1);
+  const target = p.data.action === 'approve' ? 'ok' : 'review';
+  const upd = await prisma.punch.updateMany({
+    where: { employeeId: empId, serverTime: { gte: start, lt: end }, status: { not: target } },
+    data: { status: target },
+  });
+  await prisma.auditLog.create({ data: {
+    actor: req.user.role || 'admin',
+    kind: p.data.action === 'approve' ? 'onay' : 'itiraz',
+    action: p.data.action === 'approve' ? 'Bayraklı kayıt onaylandı' : 'Kayıt itirazlı işaretlendi',
+    detail: `${emp.name} · ${p.data.date}`,
+  } });
+  return { ok: true, changed: upd.count };
+});
+
+app.get('/api/branch/employee/:id/timesheet', { preHandler: requireBranch }, async (req: any, reply) => {
+  const emp = await prisma.employee.findUnique({ where: { id: Number(req.params.id) } });
+  if (!emp || emp.branchId !== req.user.sub) return reply.code(404).send({ error: 'Çalışan bu şubede değil' });
+  const month = (req.query?.month as string) || currentMonth();
+  const { start, end } = monthRange(month);
+  return employeeTimesheet(emp.id, start, end, month);
+});
+
+app.get('/api/branch/employees', { preHandler: requireBranch }, async (req: any) => {
+  const emps = await prisma.employee.findMany({ where: { branchId: req.user.sub, status: 'active' }, orderBy: { name: 'asc' } });
+  return emps.map(e => ({ id: e.id, name: e.name, dept: e.dept }));
+});
+
+// Müdür (kiosk) — bu şubeye düşen bekleyen talepler
+app.get('/api/branch/requests', { preHandler: requireBranch }, async (req: any) => {
+  const reqs = await prisma.request.findMany({
+    where: { branchId: req.user.sub, status: 'pending' }, include: { employee: true }, orderBy: { createdAt: 'asc' },
+  });
+  // Yalnızca hâlâ müdür kademesinde olanlar (SLA aşımıyla admin'e geçenler düşer)
+  return reqs.filter(r => effectiveStage(r) === 'manager')
+    .map(r => ({ id: r.id, name: r.employee.name, dept: r.employee.dept, kind: r.kind, type: r.type, detail: r.detail, leaveStart: r.leaveStart, leaveEnd: r.leaveEnd, createdAt: r.createdAt }));
+});
+
+// Müdür kararı: düzeltme → kesin; izin → öneri + not, admin'e iletilir
+app.post('/api/branch/requests/:id/decide', { preHandler: requireBranch }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const p = z.object({ decision: z.enum(['approve', 'reject']), note: z.string().max(280).optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçersiz karar');
+  const r = await prisma.request.findUnique({ where: { id }, include: { employee: true } });
+  if (!r) return reply.code(404).send({ error: 'Talep bulunamadı' });
+  if (r.branchId !== req.user.sub) return reply.code(403).send({ error: 'Bu talep sizin şubenize ait değil' });
+  if (effectiveStage(r) !== 'manager') return bad(reply, 'Bu talep artık müdür kademesinde değil');
+
+  const note = p.data.note?.trim() || null;
+  if (r.kind === 'fix') {
+    // Düzeltme: müdür kesin karar verir
+    const status = p.data.decision === 'approve' ? 'approved' : 'rejected';
+    await prisma.request.update({ where: { id }, data: { status, stage: 'done', managerRec: p.data.decision, managerNote: note, managerDecidedAt: new Date() } });
+    await prisma.auditLog.create({ data: { actor: 'Şube müdürü', kind: 'onay', action: status === 'approved' ? 'Düzeltme talebi onaylandı (müdür)' : 'Düzeltme talebi reddedildi (müdür)', detail: `${r.employee.name} · ${r.type}` } });
+  } else {
+    // İzin: müdür önerir, admin'e iletilir
+    await prisma.request.update({ where: { id }, data: { stage: 'admin', managerRec: p.data.decision, managerNote: note, managerDecidedAt: new Date() } });
+    await prisma.auditLog.create({ data: { actor: 'Şube müdürü', kind: 'onay', action: p.data.decision === 'approve' ? 'İzin talebine müdür görüşü: uygundur' : 'İzin talebine müdür görüşü: uygun değil', detail: `${r.employee.name} · ${r.type}` } });
+  }
+  return { ok: true };
+});
+
+app.post('/api/branch/verify-pin', { preHandler: requireBranch, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req: any, reply) => {
+  const p = z.object({ pin: z.string() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'PIN gerekli');
+  // Statik PIN yerine şubenin bugünkü günlük kodu — yetkili çalışan bunu kendi uygulamasından görür
+  const ok = p.data.pin === dailyKioskCode(req.user.sub, dKey(new Date()));
+  return { ok };
+});
+
+app.post('/api/branch/manual-punch', { preHandler: requireBranch }, async (req: any, reply) => {
+  const p = z.object({ employeeId: z.number().int(), action: z.enum(['enter', 'exit', 'break-out', 'break-in']), reason: z.string().min(1) }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Eksik bilgi');
+  const emp = await prisma.employee.findUnique({ where: { id: p.data.employeeId } });
+  if (!emp || emp.branchId !== req.user.sub) return reply.code(404).send({ error: 'Çalışan bu şubede değil' });
+  await prisma.punch.create({ data: { employeeId: emp.id, branchId: req.user.sub, action: p.data.action, source: 'manual' } });
+  await prisma.auditLog.create({ data: { actor: 'Şube müdürü', kind: 'manuel', action: 'Asistlı manuel okutma', detail: `${emp.name} · ${p.data.action} · ${p.data.reason}` } });
+  return { ok: true };
+});
+
+/* ───────── ÇALIŞAN YÖNETİMİ (admin) ───────── */
+app.post('/api/employees', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({ name: z.string().min(2), tc: z.string().regex(/^\d{11}$/), dept: z.string().optional(), role: z.string().optional(), branchId: z.number().int().optional(), shiftId: z.number().int().optional(), password: z.string().min(4) }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  if (await prisma.employee.findUnique({ where: { tc: p.data.tc } })) return bad(reply, 'Bu TC ile kayıt zaten var');
+  const emp = await prisma.employee.create({ data: { name: p.data.name, tc: p.data.tc, dept: p.data.dept, role: p.data.role, branchId: p.data.branchId ?? null, shiftId: p.data.shiftId ?? null, passwordHash: await bcrypt.hash(p.data.password, 10), status: 'active', sicil: await nextSicil() } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Çalışan eklendi', detail: emp.name } });
+  return publicEmployee(emp);
+});
+
+app.patch('/api/employees/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const emp = await prisma.employee.findUnique({ where: { id } });
+  if (!emp) return reply.code(404).send({ error: 'Çalışan bulunamadı' });
+  const p = z.object({
+    name: z.string().min(2).optional(),
+    dept: z.string().optional().nullable(),
+    role: z.string().optional().nullable(),
+    branchId: z.number().int().nullable().optional(),
+    shiftId: z.number().int().nullable().optional(),
+    isManager: z.boolean().optional(),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  const data: any = {};
+  for (const k of ['name', 'dept', 'role', 'branchId', 'shiftId', 'isManager'] as const) {
+    if (p.data[k] !== undefined) data[k] = p.data[k];
+  }
+  const updated = await prisma.employee.update({ where: { id }, data, include: { branch: true } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Çalışan bilgileri güncellendi', detail: updated.name } });
+  return publicEmployee(updated);
+});
+
+app.post('/api/employees/:id/offboard', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const emp = await prisma.employee.findUnique({ where: { id } });
+  if (!emp) return reply.code(404).send({ error: 'Çalışan bulunamadı' });
+  const p = z.object({
+    exitDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Çıkış tarihi YYYY-AA-GG olmalı'),
+    reason: z.string().max(280).optional(),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  const updated = await prisma.$transaction(async (tx) => {
+    const u = await tx.employee.update({ where: { id }, data: {
+      status: 'offboarding', exitDate: new Date(p.data.exitDate + 'T12:00:00Z'), exitReason: p.data.reason?.trim() || null,
+    }, include: { branch: true } });
+    // Açık (bekleyen) izin/düzeltme taleplerini otomatik kapat.
+    await tx.request.updateMany({ where: { employeeId: id, status: 'pending' }, data: { status: 'rejected' } });
+    return u;
+  });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Çıkış sürecine alındı', detail: `${emp.name} · çıkış ${p.data.exitDate}${p.data.reason ? ' · ' + p.data.reason.trim() : ''}` } });
+  return publicEmployee(updated);
+});
+
+app.post('/api/employees/:id/reactivate', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const emp = await prisma.employee.findUnique({ where: { id } });
+  if (!emp) return reply.code(404).send({ error: 'Çalışan bulunamadı' });
+  const updated = await prisma.employee.update({ where: { id }, data: { status: 'active', exitDate: null, exitReason: null }, include: { branch: true } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'İşe geri alındı', detail: emp.name } });
+  return publicEmployee(updated);
+});
+
+app.post('/api/employee/change-password', { preHandler: requireEmployee }, async (req: any, reply) => {
+  const p = z.object({ current: z.string().min(1), next: z.string().min(4) }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'En az 4 karakterli yeni şifre gerekli');
+  const emp = await prisma.employee.findUnique({ where: { id: req.user.sub } });
+  if (!emp || !(await bcrypt.compare(p.data.current, emp.passwordHash))) return reply.code(401).send({ error: 'Mevcut şifre hatalı' });
+  await prisma.employee.update({ where: { id: emp.id }, data: { passwordHash: await bcrypt.hash(p.data.next, 10) } });
+  return { ok: true };
+});
+
+app.post('/api/employee/forgot', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (req, reply) => {
+  const p = z.object({ tc: z.string(), phone: z.string().optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'TC gerekli');
+  const emp = await prisma.employee.findUnique({ where: { tc: p.data.tc } });
+  if (emp) await prisma.auditLog.create({ data: { actor: 'Sistem', kind: 'kvkk', action: 'Şifre sıfırlama talebi', detail: `${emp.name} · yönetici sıfırlaması bekliyor` } });
+  return { ok: true };  // varlık sızdırma yok
+});
+
+/* ───────── ŞUBE / CİHAZ / VARDİYA YÖNETİMİ (admin) ───────── */
+app.post('/api/branches', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({ name: z.string().min(2), city: z.string().optional(), username: z.string().min(3), password: z.string().min(4), managerPin: z.string().regex(/^\d{4,8}$/).optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  if (await prisma.branch.findUnique({ where: { username: p.data.username } })) return bad(reply, 'Bu kullanıcı adı kullanılıyor');
+  const br = await prisma.branch.create({ data: { name: p.data.name, city: p.data.city, username: p.data.username, passwordHash: await bcrypt.hash(p.data.password, 10), managerPin: await bcrypt.hash(p.data.managerPin || '1234', 10) } });
+  const n = await prisma.device.count();
+  await prisma.device.create({ data: { branchId: br.id, code: `TBL-${String(300 + (n * 17) % 9600).padStart(4, '0')}` } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Şube eklendi', detail: br.name } });
+  return { id: br.id, name: br.name };
+});
+
+// Şube konumu / bilgileri — kiosk geofence merkezi panelden ayarlanır.
+app.patch('/api/branches/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const br = await prisma.branch.findUnique({ where: { id } });
+  if (!br) return reply.code(404).send({ error: 'Şube bulunamadı' });
+  const p = z.object({
+    name: z.string().min(2).optional(),
+    city: z.string().optional().nullable(),
+    lat: z.number().min(-90).max(90).nullable().optional(),
+    lng: z.number().min(-180).max(180).nullable().optional(),
+    radius: z.number().int().min(20).max(5000).optional(),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  const data: any = {};
+  for (const k of ['name', 'city', 'lat', 'lng', 'radius'] as const) if (p.data[k] !== undefined) data[k] = p.data[k];
+  const updated = await prisma.branch.update({ where: { id }, data });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Şube bilgileri güncellendi', detail: `${updated.name}${data.lat != null ? ` · konum ${data.lat.toFixed(5)}, ${data.lng?.toFixed(5)}` : ''}${data.radius != null ? ` · sınır ${data.radius} m` : ''}` } });
+  return { id: updated.id, name: updated.name, city: updated.city, lat: updated.lat, lng: updated.lng, radius: updated.radius };
+});
+
+app.get('/api/devices', { preHandler: requireAdmin }, async () => {
+  const devs = await prisma.device.findMany({ include: { branch: true }, orderBy: { id: 'asc' } });
+  return devs.map(d => ({ id: d.id, code: d.code, label: d.label, branchId: d.branchId, branch: d.branch.name, city: d.branch.city, mode: d.branch.mode === 'kiosk' ? 'Sabit kiosk' : d.branch.mode, status: d.status }));
+});
+
+app.post('/api/devices', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({ branchId: z.number().int(), label: z.string().max(40).optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Şube gerekli');
+  const n = await prisma.device.count();
+  const dev = await prisma.device.create({ data: { branchId: p.data.branchId, label: p.data.label?.trim() || null, code: `TBL-${String(300 + (n * 17) % 9600).padStart(4, '0')}` } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Cihaz eşlendi', detail: `${dev.code}${dev.label ? ' · ' + dev.label : ''}` } });
+  return { id: dev.id, code: dev.code };
+});
+
+// Cihaz etiketi (kullanım yeri) güncelle
+app.patch('/api/devices/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const dev = await prisma.device.findUnique({ where: { id } });
+  if (!dev) return reply.code(404).send({ error: 'Cihaz bulunamadı' });
+  const p = z.object({ label: z.string().max(40).optional().nullable() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçersiz veri');
+  const updated = await prisma.device.update({ where: { id }, data: { label: p.data.label?.trim() || null } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Cihaz bilgileri güncellendi', detail: `${updated.code}${updated.label ? ' · ' + updated.label : ''}` } });
+  return { id: updated.id, code: updated.code, label: updated.label };
+});
+
+app.post('/api/devices/:id/revoke', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const dev = await prisma.device.findUnique({ where: { id } });
+  if (!dev) return reply.code(404).send({ error: 'Cihaz bulunamadı' });
+  if (dev.status === 'revoked') return bad(reply, 'Cihaz zaten iptal edilmiş');
+  // Şubeyi basışsız bırakmamak için: son aktif cihaz iptal edilemez (önce ikinci cihaz eşle).
+  const otherActive = await prisma.device.count({ where: { branchId: dev.branchId, status: 'active', id: { not: id } } });
+  if (otherActive === 0) return bad(reply, 'Bu, şubenin tek aktif cihazı. İptal etmeden önce şubeye ikinci bir cihaz eşleyin.');
+  await prisma.device.update({ where: { id }, data: { status: 'revoked' } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Cihaz uzaktan iptal edildi', detail: dev.code } });
+  return { ok: true };
+});
+
+app.post('/api/devices/:id/reactivate', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const dev = await prisma.device.findUnique({ where: { id } });
+  if (!dev) return reply.code(404).send({ error: 'Cihaz bulunamadı' });
+  await prisma.device.update({ where: { id }, data: { status: 'active' } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Cihaz yeniden etkinleştirildi', detail: dev.code } });
+  return { ok: true };
+});
+
+app.post('/api/shifts', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({ name: z.string().min(2), start: z.string(), end: z.string(), breakMin: z.number().int().optional(), overnight: z.boolean().optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçersiz vardiya');
+  const s = await prisma.shift.create({ data: { name: p.data.name, start: p.data.start, end: p.data.end, breakMin: p.data.breakMin ?? 60, overnight: p.data.overnight ?? false } });
+  return { id: s.id, name: s.name };
+});
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+app.patch('/api/shifts/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const sh = await prisma.shift.findUnique({ where: { id } });
+  if (!sh) return reply.code(404).send({ error: 'Vardiya bulunamadı' });
+  const p = z.object({
+    name: z.string().min(2).optional(),
+    start: z.string().regex(HHMM, 'Başlangıç saati HH:MM olmalı').optional(),
+    end: z.string().regex(HHMM, 'Bitiş saati HH:MM olmalı').optional(),
+    breakMin: z.number().int().min(0).max(600).optional(),
+    overnight: z.boolean().optional(),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz vardiya');
+  const data: any = {};
+  for (const k of ['name', 'start', 'end', 'breakMin', 'overnight'] as const) if (p.data[k] !== undefined) data[k] = p.data[k];
+  const updated = await prisma.shift.update({ where: { id }, data });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Vardiya güncellendi', detail: `${updated.name} · ${updated.start}–${updated.end}` } });
+  return { id: updated.id, name: updated.name, start: updated.start, end: updated.end, breakMin: updated.breakMin, overnight: updated.overnight };
+});
+
+app.delete('/api/shifts/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const sh = await prisma.shift.findUnique({ where: { id } });
+  if (!sh) return reply.code(404).send({ error: 'Vardiya bulunamadı' });
+  const assigned = await prisma.employee.count({ where: { shiftId: id } });
+  if (assigned > 0) return bad(reply, `Bu vardiyaya atanmış ${assigned} çalışan var. Önce çalışanları başka vardiyaya alın.`);
+  await prisma.shift.delete({ where: { id } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Vardiya silindi', detail: sh.name } });
+  return { ok: true };
+});
+
+app.post('/api/data-requests/:id/done', { preHandler: requireAdmin }, async (req: any) => {
+  const dr = await prisma.dataRequest.update({ where: { id: Number(req.params.id) }, data: { status: 'done' }, include: { employee: true } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'kvkk', action: 'İlgili kişi talebi tamamlandı', detail: `${dr.employee.name} · ${dr.type}` } });
+  return { ok: true };
+});
+
+// DSAR detayı — erişim talebinde çalışanın kişisel veri dökümünü üretir
+app.get('/api/data-requests/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const dr = await prisma.dataRequest.findUnique({
+    where: { id: Number(req.params.id) },
+    include: { employee: { include: { branch: true, shift: true, consents: true } } },
+  });
+  if (!dr) return reply.code(404).send({ error: 'Talep bulunamadı' });
+  const e = dr.employee;
+  const base = { id: dr.id, type: dr.type, status: dr.status, note: dr.note, createdAt: dr.createdAt, employee: { id: e.id, name: e.name } };
+  if (dr.type !== 'access') return base; // düzeltme/silme: veri dökümü yok, sadece talep + not
+
+  const punches = await prisma.punch.findMany({ where: { employeeId: e.id }, orderBy: { serverTime: 'desc' }, take: 300, include: { branch: true } });
+  const requests = await prisma.request.findMany({ where: { employeeId: e.id }, orderBy: { createdAt: 'desc' } });
+  const dataPackage = {
+    olusturuldu: new Date().toISOString(),
+    kvkk_surumu: KVKK_VERSION,
+    kimlik: { ad_soyad: e.name, tc: e.tc, telefon: e.phone, adres: e.address, departman: e.dept, gorev: e.role, sicil: e.sicil, durum: e.status, ise_baslama: e.startDate, sube: e.branch?.name ?? null, vardiya: e.shift?.name ?? null },
+    riza_gecmisi: e.consents.sort((a, b) => +b.acceptedAt - +a.acceptedAt).map(c => ({ surum: c.version, kabul_tarihi: c.acceptedAt })),
+    basis_kayitlari: punches.map(p => ({ zaman: p.serverTime, eylem: p.action, kaynak: p.source, durum: p.status, sube: p.branch?.name ?? null })),
+    izin_duzeltme_talepleri: requests.map(r => ({ tur: r.kind === 'leave' ? 'İzin' : 'Düzeltme', baslik: r.type, detay: r.detail, durum: r.status, tarih: r.createdAt })),
+  };
+  return { ...base, package: dataPackage };
+});
+
+// Puantaj & Mesai — bayraklı kayıtlar + haftalık 45 saat
+app.get('/api/timesheet', { preHandler: requireAdmin }, async (req: any) => {
+  const month = (req.query?.month as string) || currentMonth();
+  const { start, end } = monthRange(month);
+  const emps = await prisma.employee.findMany({ where: { status: 'active' }, include: { branch: true, shift: true }, orderBy: { name: 'asc' } });
+  const employees: any[] = [];
+  const flagged: any[] = [];
+  const overtimeWeeks: any[] = [];
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  for (const emp of emps) {
+    const punches = await prisma.punch.findMany({ where: { employeeId: emp.id, serverTime: { gte: start, lt: end } }, orderBy: { serverTime: 'asc' } });
+    const days = dailyRecords(punches, shiftOpts(emp.shift));
+    let netMin = 0, overtimeMin = 0, missing = 0, flaggedCount = 0;
+    for (const r of days) {
+      netMin += r.netMin;
+      overtimeMin += Math.max(0, r.diffMin);
+      if (r.status === 'missing' && !r.inProgress) missing++;
+      if (r.flagged) flaggedCount++;
+      if ((r.status === 'missing' && !r.inProgress) || r.status === 'over' || r.flagged) {
+        const age = Math.floor((+today - +new Date(r.date)) / 86400000);
+        flagged.push({ empId: emp.id, name: emp.name, branch: emp.branch?.name, date: r.date, day: r.day, status: r.status, flagged: r.flagged, netMin: r.netMin, diffMin: r.diffMin, ageDays: age });
+      }
+    }
+    employees.push({ id: emp.id, name: emp.name, branch: emp.branch?.name ?? null, dept: emp.dept, sicil: emp.sicil, present: days.length, netMin, overtimeMin, missing, flaggedCount });
+    const byWeek = new Map<string, number>();
+    for (const r of days) { const w = weekKey(new Date(r.date)); byWeek.set(w, (byWeek.get(w) || 0) + r.netMin); }
+    for (const [w, min] of byWeek) if (min > 45 * 60) overtimeWeeks.push({ name: emp.name, week: w, hours: +(min / 60).toFixed(1) });
+  }
+  return { month, employees, flagged, overtimeWeeks };
+});
+
+/* ───────── ANOMALİ ───────── */
+app.get('/api/anomalies', { preHandler: requireAdmin }, async () => {
+  const cfg = await getRiskCfg();
+  const { start, end } = monthRange(currentMonth());
+  const emps = await prisma.employee.findMany({ where: { status: 'active' }, include: { branch: true, shift: true } });
+  const out: any[] = [];
+  for (const emp of emps) {
+    const punches = await prisma.punch.findMany({ where: { employeeId: emp.id, serverTime: { gte: start, lt: end } }, orderBy: { serverTime: 'asc' } });
+    const days = dailyRecords(punches, shiftOpts(emp.shift));
+    const startMin = emp.shift ? toMin(emp.shift.start) : 540;
+    for (const r of days) {
+      if (r.flagged) out.push({ name: emp.name, branch: emp.branch?.name, type: 'Mükerrer/itirazlı kayıt', ctx: 'Yöneticce itirazlı işaretlendi', risk: 86, when: r.date });
+      else if (r.status === 'missing' && !r.inProgress) out.push({ name: emp.name, branch: emp.branch?.name, type: 'Eksik çıkış', ctx: 'Çıkış okutması yok', risk: 48, when: r.date });
+      else if (r.in && toMin(r.in) > startMin + cfg.lateToleranceMin) out.push({ name: emp.name, branch: emp.branch?.name, type: 'Geç giriş', ctx: `Vardiya ${emp.shift?.start} · giriş ${r.in}`, risk: 40, when: r.date });
+      if (r.netMin > cfg.longShiftHours * 60) out.push({ name: emp.name, branch: emp.branch?.name, type: 'Uzun mesai', ctx: `Net ${Math.round(r.netMin / 60)} saat`, risk: 56, when: r.date });
+    }
+  }
+  return { threshold: cfg.bandHigh, rows: out.sort((a, b) => b.risk - a.risk).slice(0, 20) };
+});
+
+// Çalışan risk skoru — şeffaf, ağırlıklı model (gerçek basış verisinden)
+// Risk faktörlerinin gösterim bilgisi + varsayılan puanları (etiket/açıklama kodda, puan ayarlanabilir)
+const RISK_META = [
+  { key: 'review', label: 'İtirazlı / mükerrer kayıt', hint: 'Yöneticce itirazlı işaretlenen veya incelemedeki okutma', def: 25 },
+  { key: 'missing', label: 'Eksik çıkış', hint: 'Çıkış okutması yapılmamış gün', def: 15 },
+  { key: 'manual', label: 'Manuel (asistlı) okutma', hint: 'Tabletten yönetici/asistan eliyle girilen basış', def: 12 },
+  { key: 'late', label: 'Geç giriş', hint: 'Vardiya başlangıcından tolerans+ sonra giriş', def: 8 },
+  { key: 'long', label: 'Olağandışı uzun mesai', hint: 'Uzun mesai eşiğini aşan gün', def: 6 },
+] as const;
+type RiskCfg = { weights: Record<string, number>; bandHigh: number; bandMid: number; lateToleranceMin: number; longShiftHours: number };
+const DEFAULT_RISK_CFG: RiskCfg = {
+  weights: Object.fromEntries(RISK_META.map(m => [m.key, m.def])),
+  bandHigh: 70, bandMid: 40, lateToleranceMin: 15, longShiftHours: 11,
+};
+async function getRiskCfg(): Promise<RiskCfg> {
+  const row = await prisma.setting.findUnique({ where: { key: 'risk-config' } });
+  if (!row) return DEFAULT_RISK_CFG;
+  try { const v = JSON.parse(row.value); return { ...DEFAULT_RISK_CFG, ...v, weights: { ...DEFAULT_RISK_CFG.weights, ...(v.weights || {}) } }; }
+  catch { return DEFAULT_RISK_CFG; }
+}
+const bandsOf = (cfg: RiskCfg) => [
+  { key: 'high', label: 'Yüksek', min: cfg.bandHigh, tone: 'err' },
+  { key: 'mid', label: 'Orta', min: cfg.bandMid, tone: 'warn' },
+  { key: 'low', label: 'Düşük', min: 1, tone: 'neu' },
+  { key: 'clean', label: 'Temiz', min: 0, tone: 'ok' },
+];
+const bandKeyOf = (score: number, cfg: RiskCfg) => bandsOf(cfg).find(b => score >= b.min)!.key;
+
+app.get('/api/risk-scores', { preHandler: requireAdmin }, async () => {
+  const cfg = await getRiskCfg();
+  const month = currentMonth();
+  const { start, end } = monthRange(month);
+  const emps = await prisma.employee.findMany({ where: { status: 'active' }, include: { branch: true, shift: true } });
+  const employees: any[] = [];
+  for (const emp of emps) {
+    const punches = await prisma.punch.findMany({ where: { employeeId: emp.id, serverTime: { gte: start, lt: end } }, orderBy: { serverTime: 'asc' } });
+    const days = dailyRecords(punches, shiftOpts(emp.shift));
+    const startMin = emp.shift ? toMin(emp.shift.start) : 540;
+    const f = { review: 0, missing: 0, manual: 0, late: 0, long: 0 };
+    for (const r of days) {
+      if (r.flagged) f.review++;
+      if (r.status === 'missing' && !r.inProgress) f.missing++;
+      if (r.in && toMin(r.in) > startMin + cfg.lateToleranceMin) f.late++;
+      if (r.netMin > cfg.longShiftHours * 60) f.long++;
+    }
+    f.manual = punches.filter(p => p.source === 'manual').length;
+    const score = Math.min(100, RISK_META.reduce((s, m) => s + (f as any)[m.key] * (cfg.weights[m.key] ?? 0), 0));
+    employees.push({ id: emp.id, name: emp.name, branch: emp.branch?.name ?? null, dept: emp.dept, sicil: emp.sicil, score, level: bandKeyOf(score, cfg), factors: f });
+  }
+  employees.sort((a, b) => b.score - a.score);
+  return { month, weights: RISK_META.map(m => ({ ...m, points: cfg.weights[m.key] ?? m.def })), bands: bandsOf(cfg), employees };
+});
+
+// Güvenlik ayarları — risk ağırlıkları/bantları/eşikleri (yönetici ayarlar)
+app.get('/api/risk-settings', { preHandler: requireAdmin }, async () => {
+  const cfg = await getRiskCfg();
+  return { meta: RISK_META, defaults: DEFAULT_RISK_CFG, config: cfg };
+});
+
+app.put('/api/risk-settings', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({
+    weights: z.record(z.string(), z.number().int().min(0).max(100)),
+    bandHigh: z.number().int().min(1).max(100),
+    bandMid: z.number().int().min(1).max(100),
+    lateToleranceMin: z.number().int().min(0).max(180),
+    longShiftHours: z.number().int().min(1).max(24),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz ayar');
+  if (p.data.bandMid >= p.data.bandHigh) return bad(reply, 'Orta band, Yüksek banttan küçük olmalı');
+  const cfg: RiskCfg = {
+    weights: Object.fromEntries(RISK_META.map(m => [m.key, p.data.weights[m.key] ?? DEFAULT_RISK_CFG.weights[m.key]])),
+    bandHigh: p.data.bandHigh, bandMid: p.data.bandMid, lateToleranceMin: p.data.lateToleranceMin, longShiftHours: p.data.longShiftHours,
+  };
+  await prisma.setting.upsert({ where: { key: 'risk-config' }, create: { key: 'risk-config', value: JSON.stringify(cfg) }, update: { value: JSON.stringify(cfg) } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Güvenlik ayarları güncellendi', detail: `bant Y${cfg.bandHigh}/O${cfg.bandMid} · geç ${cfg.lateToleranceMin}dk · uzun ${cfg.longShiftHours}s` } });
+  return { ok: true, config: cfg };
+});
+
+/* ───────── BORDRO ───────── */
+app.get('/api/payroll', { preHandler: requireAdmin }, async () => {
+  const month = currentMonth();
+  let period = await prisma.payrollPeriod.findUnique({ where: { month } });
+  if (!period) period = await prisma.payrollPeriod.create({ data: { month, status: 'open' } });
+  const emps = await prisma.employee.findMany({ where: { status: 'active' } });
+  const { start, end } = monthRange(month);
+  const rows: any[] = [];
+  let totalNet = 0, totalOt = 0;
+  for (const emp of emps) {
+    const ts = await employeeTimesheet(emp.id, start, end, month);
+    rows.push({ name: emp.name, sicil: emp.sicil, netMin: ts.summary.netMin, overtimeMin: ts.summary.overtimeMin, days: ts.summary.present, missing: ts.summary.missing });
+    totalNet += ts.summary.netMin; totalOt += ts.summary.overtimeMin;
+  }
+  return { period: { month: period.month, status: period.status, closedAt: period.closedAt }, rows, totals: { netMin: totalNet, overtimeMin: totalOt } };
+});
+
+app.post('/api/payroll/close', { preHandler: requireAdmin }, async (req: any) => {
+  const month = currentMonth();
+  await prisma.payrollPeriod.upsert({ where: { month }, update: { status: 'closed', closedAt: new Date() }, create: { month, status: 'closed', closedAt: new Date() } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'bordro', action: 'Bordro dönemi kapatıldı', detail: month } });
+  return { ok: true };
+});
+
+/* ───────── RAPORLAR ───────── */
+app.get('/api/reports', { preHandler: requireAdmin }, async (req: any) => {
+  const cfg = await getRiskCfg();
+  const month = (req.query?.month as string) || currentMonth();
+  const { start, end } = monthRange(month);
+  const emps = await prisma.employee.findMany({ where: { status: 'active' }, include: { shift: true, branch: true } });
+  const rows: any[] = [];
+  for (const emp of emps) {
+    const punches = await prisma.punch.findMany({ where: { employeeId: emp.id, serverTime: { gte: start, lt: end } }, orderBy: { serverTime: 'asc' } });
+    const days = dailyRecords(punches, shiftOpts(emp.shift));
+    const startMin = emp.shift ? toMin(emp.shift.start) : 540;
+    const net = days.reduce((s, r) => s + r.netMin, 0);
+    const ot = days.reduce((s, r) => s + Math.max(0, r.diffMin), 0);
+    const late = days.filter(r => r.in && toMin(r.in) > startMin + cfg.lateToleranceMin).length;
+    const miss = days.filter(r => r.status === 'missing' && !r.inProgress).length;
+    rows.push({ name: emp.name, branch: emp.branch?.name ?? null, dept: emp.dept ?? null, netHours: +(net / 60).toFixed(1), overtimeHours: +(ot / 60).toFixed(1), late, missing: miss });
+  }
+  return { month, rows };
+});
+
+/* ───────── KVKK ───────── */
+app.get('/api/kvkk', { preHandler: requireAdmin }, async () => {
+  const emps = await prisma.employee.findMany({ where: { status: { in: ['active', 'pending'] } }, include: { consents: true } });
+  const employees = emps.map(e => {
+    const latest = e.consents.sort((a, b) => +b.acceptedAt - +a.acceptedAt)[0];
+    const status = !latest ? 'none' : latest.version === KVKK_VERSION ? 'current' : 'old';
+    return { name: e.name, status, version: latest?.version || null, acceptedAt: latest?.acceptedAt || null };
+  });
+  const drs = await prisma.dataRequest.findMany({ include: { employee: true }, orderBy: { createdAt: 'desc' } });
+  const requests = drs.map(r => ({ id: r.id, name: r.employee.name, type: r.type, status: r.status, createdAt: r.createdAt }));
+  return { version: KVKK_VERSION, employees, requests };
+});
+
+app.post('/api/data-request', { preHandler: requireEmployee }, async (req: any, reply) => {
+  const p = z.object({ type: z.enum(['access', 'rectify', 'erase']), note: z.string().optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçersiz talep');
+  await prisma.dataRequest.create({ data: { employeeId: req.user.sub, type: p.data.type, note: p.data.note } });
+  return { ok: true };
+});
+
+/* ───────── BİLDİRİMLER (çalışan, gerçek veriden türetilir) ───────── */
+app.get('/api/notifications', { preHandler: requireEmployee }, async (req: any) => {
+  const out: any[] = [];
+  const reqs = await prisma.request.findMany({ where: { employeeId: req.user.sub, status: { in: ['approved', 'rejected'] } }, orderBy: { createdAt: 'desc' }, take: 5 });
+  for (const r of reqs) out.push({
+    icon: r.status === 'approved' ? 'check' : 'x', tone: r.status === 'approved' ? 'ok' : 'err',
+    title: r.status === 'approved' ? 'Talebiniz onaylandı' : 'Talebiniz reddedildi',
+    body: `${r.type}${r.detail ? ' · ' + r.detail : ''}`, time: r.createdAt,
+  });
+  const { start, end } = monthRange(currentMonth());
+  const punches = await prisma.punch.findMany({ where: { employeeId: req.user.sub, serverTime: { gte: start, lt: end } }, orderBy: { serverTime: 'asc' } });
+  for (const d of dailyRecords(punches, { todayKey: workDayKey(new Date()) }).filter(x => x.status === 'missing' && !x.inProgress).slice(-3)) out.push({
+    icon: 'bell', tone: 'warn', title: 'Çıkış okutmayı unuttunuz', body: `${d.date} · giriş ${d.in}, çıkış kaydı yok`, time: new Date(d.date),
+  });
+  out.sort((a, b) => +new Date(b.time) - +new Date(a.time));
+  return out;
+});
+
+/* ───────── ADMIN BİLDİRİMLERİ (türetilmiş + okundu takipli) ───────── */
+const notifSeenKey = (adminId: number) => `notif-seen:${adminId}`;
+async function getLastSeen(adminId: number): Promise<Date> {
+  const row = await prisma.setting.findUnique({ where: { key: notifSeenKey(adminId) } });
+  if (!row) return new Date(0);
+  try { return new Date(JSON.parse(row.value).at); } catch { return new Date(0); }
+}
+const DSAR_TR: Record<string, string> = { access: 'erişim', rectify: 'düzeltme', erase: 'silme' };
+
+app.get('/api/admin/notifications', { preHandler: requireAdmin }, async (req: any) => {
+  const items: any[] = [];
+
+  // 1) Onay bekleyen çalışanlar
+  for (const e of await prisma.employee.findMany({ where: { status: 'pending' }, orderBy: { createdAt: 'desc' } }))
+    items.push({ id: `emp-${e.id}`, kind: 'approval', tone: 'warn', icon: 'user', title: 'Çalışan kayıt onayı bekliyor', body: e.name, time: e.createdAt, route: 'employees' });
+
+  // 2) Talepler — yalnızca admin kademesine geçenler (izin müdür görüşüyle iletildi / SLA ile eskale)
+  for (const r of await prisma.request.findMany({ where: { status: 'pending' }, include: { employee: true }, orderBy: { createdAt: 'desc' } })) {
+    if (effectiveStage(r) !== 'admin') continue;
+    const esc = r.stage === 'manager';
+    items.push({ id: `req-${r.id}`, kind: 'request', tone: 'brand', icon: 'inbox', title: esc ? 'Talep eskale oldu (müdür yanıt vermedi)' : (r.managerRec === 'reject' ? 'İzin talebi · müdür uygun bulmadı' : 'İzin talebi · müdür görüşü hazır'), body: `${r.employee.name} · ${r.type}`, time: r.managerDecidedAt || r.createdAt, route: 'approvals' });
+  }
+
+  // 3) Bekleyen KVKK/DSAR talepleri
+  for (const dr of await prisma.dataRequest.findMany({ where: { status: 'pending' }, include: { employee: true }, orderBy: { createdAt: 'desc' } }))
+    items.push({ id: `dsar-${dr.id}`, kind: 'dsar', tone: 'brand', icon: 'shield', title: 'KVKK ilgili kişi talebi', body: `${dr.employee.name} · ${DSAR_TR[dr.type] || dr.type}`, time: dr.createdAt, route: 'kvkk' });
+
+  // 4) Bayraklı/itirazlı puantaj (bu ay, çalışan+gün bazında)
+  const { start, end } = monthRange(currentMonth());
+  const reviewPunches = await prisma.punch.findMany({ where: { status: 'review', serverTime: { gte: start, lt: end } }, include: { employee: true }, orderBy: { serverTime: 'desc' } });
+  const seenFlag = new Set<string>();
+  for (const p of reviewPunches) {
+    const day = new Date(p.serverTime); day.setHours(0, 0, 0, 0);
+    const k = `${p.employeeId}-${day.toISOString().slice(0, 10)}`;
+    if (seenFlag.has(k)) continue; seenFlag.add(k);
+    items.push({ id: `flag-${k}`, kind: 'flag', tone: 'err', icon: 'alert', title: 'Bayraklı puantaj kaydı', body: `${p.employee.name} · ${day.toISOString().slice(0, 10)} — okutma şüpheli/itirazlı bulunup incelemeye alındı; kontrol edip onaylayın.`, time: p.serverTime, route: 'timesheet' });
+  }
+
+  // 5) Son cihaz iptal olayları
+  for (const a of await prisma.auditLog.findMany({ where: { kind: 'cihaz', action: { contains: 'iptal' } }, orderBy: { createdAt: 'desc' }, take: 10 }))
+    items.push({ id: `dev-${a.id}`, kind: 'device', tone: 'neu', icon: 'shield', title: a.action, body: a.detail || '', time: a.createdAt, route: 'branches' });
+
+  items.sort((x, y) => +new Date(y.time) - +new Date(x.time));
+  const top = items.slice(0, 30);
+  const lastSeen = await getLastSeen(req.user.sub);
+  const unreadCount = top.filter(i => new Date(i.time) > lastSeen).length;
+  return { items: top, unreadCount, lastSeen: lastSeen.toISOString() };
+});
+
+app.post('/api/admin/notifications/seen', { preHandler: requireAdmin }, async (req: any) => {
+  const at = new Date().toISOString();
+  await prisma.setting.upsert({ where: { key: notifSeenKey(req.user.sub) }, create: { key: notifSeenKey(req.user.sub), value: JSON.stringify({ at }) }, update: { value: JSON.stringify({ at }) } });
+  return { ok: true, at };
+});
+
+app.listen({ port: PORT, host: '0.0.0.0' })
+  .then(() => app.log.info(`API http://localhost:${PORT} (LAN: http://192.168.1.106:${PORT})`))
+  .catch((e) => { app.log.error(e); process.exit(1); });
