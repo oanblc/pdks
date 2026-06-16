@@ -2,91 +2,107 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../icons'
 import { api } from '../api'
-import { PageHead, StatCard, StatusChip, Modal, Field, type Tone } from '../ui'
+import { PageHead, StatCard, Modal, Field } from '../ui'
 
 type H = { id: number; date: string; name: string; type: 'resmi' | 'dini' | 'custom'; workingBranchIds: number[]; workingBranchNames: string[] }
 type Branch = { id: number; name: string }
 
-const typeChip: Record<string, [Tone, string]> = { resmi: ['brand', 'Resmi'], dini: ['neu', 'Dini'], custom: ['neu', 'Diğer'] }
 const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
-const fmtDate = (s: string) => { const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : s }
 
 export function Holidays() {
   const [rows, setRows] = useState<H[]>([])
-  const [loading, setLoading] = useState(true)
-  const [add, setAdd] = useState(false)
   const [editing, setEditing] = useState<H | null>(null)
-  const [year, setYear] = useState(String(new Date().getFullYear()))
-  const [open, setOpen] = useState<Set<number>>(new Set())
+  const [addDate, setAddDate] = useState<string | null>(null)
+  const now = new Date()
+  const [viewDate, setViewDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1))
   const [busy, setBusy] = useState(false)
-  const load = () => api.holidays().then((s: any) => { setRows(s); setLoading(false) }).catch(() => setLoading(false))
+  const load = () => api.holidays().then((s: any) => setRows(s)).catch(() => {})
   useEffect(() => { load() }, [])
+
+  const y = viewDate.getFullYear(), mo = viewDate.getMonth()
+  const year = String(y)
+  const monthKey = `${y}-${String(mo + 1).padStart(2, '0')}`
+  const yearRows = rows.filter(r => r.date.slice(0, 4) === year)
+  const closed = yearRows.filter(r => r.workingBranchIds.length === 0).length
 
   const doImport = async () => {
     setBusy(true)
-    try { const r: any = await api.importHolidays(Number(year)); alert(`${r.added} tatil eklendi${r.religiousIncluded ? '' : ' (bu yıl için dini bayram tarihi yok; elle ekleyin)'}`); load() }
+    try { const r: any = await api.importHolidays(y); alert(`${r.added} tatil eklendi${r.religiousIncluded ? '' : ' (bu yıl için dini bayram tarihi yok; elle ekleyin)'}`); load() }
     catch (e: any) { alert(e.message) } finally { setBusy(false) }
   }
-  const toggle = (m: number) => setOpen(s => { const n = new Set(s); n.has(m) ? n.delete(m) : n.add(m); return n })
 
-  // Yalnız seçili yıl; aya göre grupla (varsayılan kapalı, tıklayınca açılır)
-  const shown = rows.filter(r => r.date.slice(0, 4) === year).sort((a, b) => a.date < b.date ? -1 : 1)
-  const closed = shown.filter(r => r.workingBranchIds.length === 0).length
-  const months = Array.from(new Set(shown.map(r => Number(r.date.slice(5, 7))))).sort((a, b) => a - b)
+  // Takvim ızgarası (Pazartesi başlangıçlı)
+  const WD = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+  const daysInMonth = new Date(y, mo + 1, 0).getDate()
+  const firstDow = (new Date(y, mo, 1).getDay() + 6) % 7
+  const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
+  const holiByDay = new Map<number, H>()
+  for (const h of rows) if (h.date.startsWith(monthKey + '-')) holiByDay.set(Number(h.date.slice(8, 10)), h)
+  const isToday = (d: number) => y === now.getFullYear() && mo === now.getMonth() && d === now.getDate()
 
   return (
     <div>
-      <PageHead title="Tatiller" subtitle={`${year} · ${shown.length} resmi/dini tatil`}
+      <PageHead title="Tatiller" subtitle={`${year} · ${yearRows.length} resmi/dini tatil`}
         actions={<>
-          <input className="input" value={year} onChange={e => setYear(e.target.value.replace(/\D/g, '').slice(0, 4))} style={{ width: 84, height: 44, textAlign: 'center' }} inputMode="numeric" />
-          <button className="btn btn-ghost" style={{ height: 44 }} disabled={busy} onClick={doImport}><Icon name="calendar" size={18} color="var(--ink)" /> İçe aktar</button>
-          <button className="btn btn-primary" style={{ height: 44 }} onClick={() => setAdd(true)}><Icon name="plus" size={19} color="#fff" /> Tatil ekle</button>
+          <button className="btn btn-ghost" style={{ height: 44 }} disabled={busy} onClick={doImport}><Icon name="calendar" size={18} color="var(--ink)" /> {year} içe aktar</button>
+          <button className="btn btn-primary" style={{ height: 44 }} onClick={() => setAddDate('')}><Icon name="plus" size={19} color="#fff" /> Tatil ekle</button>
         </>} />
       <div className="rowx gap14" style={{ marginBottom: 18 }}>
-        <StatCard label="Tatil" value={shown.length} sub={`${year} yılı`} icon="calendar" />
+        <StatCard label="Tatil" value={yearRows.length} sub={`${year} yılı`} icon="calendar" />
         <StatCard label="Kapalı gün" value={closed} sub="tüm şubeler kapalı" tone="ok" icon="calendar" />
-        <StatCard label="Açık (çalışılan)" value={shown.length - closed} sub="en az bir şube çalışıyor" tone="warn" icon="clock" />
+        <StatCard label="Açık (çalışılan)" value={yearRows.length - closed} sub="en az bir şube çalışıyor" tone="warn" icon="clock" />
       </div>
-      {loading ? <div className="t-body ink-2">Yükleniyor…</div> : shown.length === 0 ? (
-        <div className="card" style={{ padding: 24 }}><span className="t-body ink-2">{year} için tatil yok. "İçe aktar" ile yılın resmi/dini tatillerini ekleyin.</span></div>
-      ) : (
-        <div className="col" style={{ gap: 10 }}>
-          {months.map(m => {
-            const items = shown.filter(r => Number(r.date.slice(5, 7)) === m)
-            const isOpen = open.has(m)
+
+      <div className="card" style={{ padding: 18 }}>
+        <div className="rowx between" style={{ marginBottom: 14 }}>
+          <span className="t-h3">{AYLAR[mo]} {y}</span>
+          <div className="rowx gap8">
+            <button className="btn btn-ghost" onClick={() => setViewDate(new Date(y, mo - 1, 1))} style={{ width: 36, height: 36, padding: 0 }}><Icon name="chevronL" size={18} color="var(--ink-2)" /></button>
+            <button className="btn btn-ghost" onClick={() => setViewDate(new Date(now.getFullYear(), now.getMonth(), 1))} style={{ height: 36, fontSize: 13 }}>Bugün</button>
+            <button className="btn btn-ghost" onClick={() => setViewDate(new Date(y, mo + 1, 1))} style={{ width: 36, height: 36, padding: 0 }}><Icon name="chevron" size={18} color="var(--ink-2)" /></button>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 6, marginBottom: 6 }}>
+          {WD.map(w => <div key={w} className="t-cap ink-3" style={{ textAlign: 'center', fontWeight: 600 }}>{w}</div>)}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 6 }}>
+          {cells.map((d, i) => {
+            if (!d) return <div key={i} />
+            const h = holiByDay.get(d)
+            const dow = (firstDow + d - 1) % 7
+            const weekend = dow >= 5
+            const working = h && h.workingBranchIds.length > 0
+            const dd = `${monthKey}-${String(d).padStart(2, '0')}`
             return (
-              <div key={m} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <button className="rowx between row-press" onClick={() => toggle(m)} style={{ width: '100%', padding: '15px 18px', background: 'transparent', border: 'none', cursor: 'pointer' }}>
-                  <span className="t-bodys" style={{ fontSize: 15 }}>{AYLAR[m - 1]} {year} <span className="ink-3" style={{ fontWeight: 400 }}>· {items.length} tatil</span></span>
-                  <Icon name={isOpen ? 'chevronDown' : 'chevron'} size={18} color="var(--ink-3)" />
-                </button>
-                {isOpen && items.map(r => (
-                  <div key={r.id} className="rowx between row-press" onClick={() => setEditing(r)} style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', cursor: 'pointer', gap: 10 }}>
-                    <div className="rowx gap12" style={{ minWidth: 0, alignItems: 'center' }}>
-                      <span className="t-body mono ink-2" style={{ width: 80, flex: 'none' }}>{fmtDate(r.date)}</span>
-                      <span className="t-bodys" style={{ fontSize: 14.5, minWidth: 0 }}>{r.name}</span>
-                      <StatusChip status={typeChip[r.type]?.[0] ?? 'neu'}>{typeChip[r.type]?.[1] ?? r.type}</StatusChip>
-                    </div>
-                    <div className="rowx gap10" style={{ whiteSpace: 'nowrap', alignItems: 'center' }}>
-                      {r.workingBranchIds.length === 0 ? <StatusChip status="ok">Kapalı</StatusChip> : <span className="t-sm ink-2">{r.workingBranchNames.length} şube çalışıyor</span>}
-                      <span className="t-sm" style={{ color: 'var(--brand-700)' }}>Düzenle ›</span>
-                    </div>
-                  </div>
-                ))}
+              <div key={i} className="row-press" onClick={() => h ? setEditing(h) : setAddDate(dd)}
+                style={{ minHeight: 80, borderRadius: 10, cursor: 'pointer', padding: 8,
+                  border: isToday(d) ? '2px solid var(--brand-600)' : '1px solid var(--border)',
+                  background: h ? 'var(--brand-50)' : (weekend ? 'var(--surface-2)' : 'var(--surface)') }}>
+                <div className="rowx between" style={{ alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 13.5, fontWeight: h ? 700 : 500, color: h ? 'var(--brand-700)' : (weekend ? 'var(--ink-3)' : 'var(--ink)') }}>{d}</span>
+                  {working && <span title="Açık (çalışılıyor)" style={{ width: 7, height: 7, borderRadius: 4, background: 'var(--warn-ink)', marginTop: 3 }} />}
+                </div>
+                {h && <div style={{ fontSize: 10.5, lineHeight: 1.25, color: 'var(--brand-700)', marginTop: 4, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{h.name}</div>}
               </div>
             )
           })}
         </div>
-      )}
-      {add && <HolidayModal onClose={() => setAdd(false)} onDone={() => { setAdd(false); load() }} />}
+        <div className="rowx gap16" style={{ marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span className="rowx gap6" style={{ alignItems: 'center' }}><span style={{ width: 13, height: 13, borderRadius: 3, background: 'var(--brand-50)', border: '1px solid var(--border)' }} /><span className="t-cap ink-3">Tatil</span></span>
+          <span className="rowx gap6" style={{ alignItems: 'center' }}><span style={{ width: 8, height: 8, borderRadius: 4, background: 'var(--warn-ink)' }} /><span className="t-cap ink-3">Açık (çalışılıyor)</span></span>
+          <span className="t-cap ink-3">Güne tıkla → tatil ekle / düzenle</span>
+        </div>
+      </div>
+
+      {addDate !== null && <HolidayModal initialDate={addDate} onClose={() => setAddDate(null)} onDone={() => { setAddDate(null); load() }} />}
       {editing && <HolidayModal holiday={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); load() }} />}
     </div>
   )
 }
 
-function HolidayModal({ holiday, onClose, onDone }: { holiday?: H; onClose: () => void; onDone: () => void }) {
+function HolidayModal({ holiday, initialDate, onClose, onDone }: { holiday?: H; initialDate?: string; onClose: () => void; onDone: () => void }) {
   const editMode = !!holiday
-  const [date, setDate] = useState(holiday?.date ?? '')
+  const [date, setDate] = useState(holiday?.date ?? initialDate ?? '')
   const [name, setName] = useState(holiday?.name ?? '')
   const [type, setType] = useState<'resmi' | 'dini' | 'custom'>(holiday?.type ?? 'resmi')
   const [working, setWorking] = useState<number[]>(holiday?.workingBranchIds ?? [])
