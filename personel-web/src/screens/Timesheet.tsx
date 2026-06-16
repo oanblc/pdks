@@ -53,6 +53,8 @@ export function Timesheet() {
   const [d, setD] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
   const [openEmp, setOpenEmp] = useState<EmpRow | null>(null)
+  const [branchFilter, setBranchFilter] = useState<string | null>(null)
+  const [flaggedOpen, setFlaggedOpen] = useState(false)
   const isCurrent = month === thisMonth()
 
   useEffect(() => {
@@ -67,6 +69,19 @@ export function Timesheet() {
   const exportHeader = ['Ad', 'Sicil', 'Şube', 'Departman', 'Gün', 'Net (s:dk)', 'Fazla mesai', 'Eksik', 'Bayraklı']
   const onCsv = () => downloadCsv(`puantaj-${month}.csv`, exportHeader, exportRows())
   const onPdf = () => printPdf(`Puantaj & Mesai · ${monthLabel(month)}`, exportHeader, exportRows())
+
+  // Şube bazlı toplam puantaj (çalışan satırlarından türetilir)
+  const branchAgg = (() => {
+    const m = new Map<string, { name: string; emps: number; present: number; netMin: number; overtimeMin: number; missing: number; flagged: number }>()
+    for (const e of d?.employees ?? []) {
+      const key = e.branch || '— Şubesiz'
+      const cur = m.get(key) ?? { name: key, emps: 0, present: 0, netMin: 0, overtimeMin: 0, missing: 0, flagged: 0 }
+      cur.emps++; cur.present += e.present; cur.netMin += e.netMin; cur.overtimeMin += e.overtimeMin; cur.missing += e.missing; cur.flagged += e.flaggedCount
+      m.set(key, cur)
+    }
+    return [...m.values()].sort((a, b) => (a.name < b.name ? -1 : 1))
+  })()
+  const shownEmps = (d?.employees ?? []).filter(e => !branchFilter || (e.branch || '— Şubesiz') === branchFilter)
 
   if (openEmp) return <EmployeeSheet emp={openEmp} initialMonth={month} onBack={() => setOpenEmp(null)} />
 
@@ -92,10 +107,34 @@ export function Timesheet() {
 
       {loading ? <div className="t-body ink-2">Yükleniyor…</div> : (
         <>
-          <div className="t-h3" style={{ marginBottom: 12 }}>Çalışan puantajı <span className="t-cap ink-3">· satıra tıkla, günlük giriş-çıkış</span></div>
-          {(d?.employees.length ?? 0) === 0 ? <div className="card" style={{ padding: 24 }}><span className="t-body ink-2">Bu dönemde kayıt yok</span></div> : (
+          {/* ── Şube puantajı (toplam) ── */}
+          <div className="t-h3" style={{ marginBottom: 12 }}>Şube puantajı <span className="t-cap ink-3">· şubeye tıkla, o şubenin çalışanlarını süz</span></div>
+          {branchAgg.length === 0 ? <div className="card" style={{ padding: 24 }}><span className="t-body ink-2">Bu dönemde kayıt yok</span></div> : (
+            <Table cols={[{ label: 'ŞUBE', flex: 1.9 }, { label: 'ÇALIŞAN', flex: 0.8 }, { label: 'NET', flex: 1 }, { label: 'FAZLA MESAİ', flex: 1.1 }, { label: 'EKSİK', flex: 0.8 }, { label: 'BAYRAK', w: 110, align: 'right' }]}>
+              {branchAgg.map((b, i) => {
+                const selected = branchFilter === b.name
+                return (
+                  <Row key={b.name} i={i} onClick={() => setBranchFilter(selected ? null : b.name)} cells={[
+                    { flex: 1.9, node: <div className="rowx gap12" style={{ alignItems: 'center' }}><div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--brand-50)', display: 'grid', placeItems: 'center' }}><Icon name="building" size={18} color="var(--brand-700)" /></div><div className="t-bodys" style={{ fontSize: 14.5 }}>{b.name}</div>{selected && <StatusChip status="brand">Süzülüyor</StatusChip>}</div> },
+                    { flex: 0.8, node: <span className="t-sm mono">{b.emps}</span> },
+                    { flex: 1, node: <span className="t-sm mono">{hhmm(b.netMin)}</span> },
+                    { flex: 1.1, node: <span className="t-sm mono" style={{ color: 'var(--brand-700)' }}>{b.overtimeMin > 0 ? '+' + hhmm(b.overtimeMin) : '—'}</span> },
+                    { flex: 0.8, node: <span className="t-sm mono" style={{ color: b.missing ? 'var(--warn-ink)' : 'var(--ink-3)' }}>{b.missing}</span> },
+                    { w: 110, align: 'right', node: b.flagged > 0 ? <StatusChip status="err">{b.flagged} bayrak</StatusChip> : <span className="t-sm ink-3">—</span> },
+                  ]} />
+                )
+              })}
+            </Table>
+          )}
+
+          {/* ── Çalışan puantajı ── */}
+          <div className="rowx between" style={{ margin: '24px 0 12px', alignItems: 'center' }}>
+            <div className="t-h3">Çalışan puantajı {branchFilter && <span className="t-cap" style={{ color: 'var(--brand-700)' }}>· {branchFilter}</span>} <span className="t-cap ink-3">· satıra tıkla, günlük giriş-çıkış</span></div>
+            {branchFilter && <button className="btn btn-ghost" style={{ height: 34, fontSize: 13 }} onClick={() => setBranchFilter(null)}>Tüm şubeler</button>}
+          </div>
+          {shownEmps.length === 0 ? <div className="card" style={{ padding: 24 }}><span className="t-body ink-2">Bu dönemde kayıt yok</span></div> : (
             <Table cols={[{ label: 'ÇALIŞAN', flex: 1.9 }, { label: 'GÜN', flex: 0.8 }, { label: 'NET', flex: 1 }, { label: 'FAZLA MESAİ', flex: 1.1 }, { label: 'EKSİK', flex: 0.8 }, { label: 'BAYRAK', w: 110, align: 'right' }]}>
-              {d!.employees.map((e, i) => (
+              {shownEmps.map((e, i) => (
                 <Row key={e.id} i={i} onClick={() => setOpenEmp(e)} cells={[
                   { flex: 1.9, node: <div className="rowx gap12"><Avatar name={e.name} size={36} /><div><div className="t-bodys" style={{ fontSize: 14.5 }}>{e.name}</div><div className="t-cap ink-3">{e.branch || '—'}{e.dept ? ` · ${e.dept}` : ''}</div></div></div> },
                   { flex: 0.8, node: <span className="t-sm mono">{e.present}</span> },
@@ -108,24 +147,38 @@ export function Timesheet() {
             </Table>
           )}
 
-          <div className="t-h3" style={{ margin: '24px 0 6px' }}>Bayraklı kayıtlar <span className="t-cap ink-3">· eksik basma / itirazlı / fazla mesai</span></div>
-          <div className="t-cap ink-3" style={{ marginBottom: 12 }}>Çözüm süresi: bir bayraklı kaydın kaç gündür açık olduğunu gösterir; geciken kayıt bordroyu etkiler.</div>
-          {(d?.flagged.length ?? 0) === 0 ? <div className="card" style={{ padding: 24 }}><span className="t-body ink-2">Bayraklı kayıt yok</span></div> : (
-            <Table cols={[{ label: 'ÇALIŞAN', flex: 1.6 }, { label: 'GÜN', flex: 1 }, { label: 'DURUM', flex: 1.2 }, { label: 'NET', flex: 0.9 }, { label: 'FARK', flex: 0.9 }, { label: 'ÇÖZÜM SÜRESİ', w: 140, align: 'right' }]}>
-              {d!.flagged.map((f, i) => {
-                const sla = slaOf(f.ageDays)
-                return (
-                  <Row key={i} i={i} cells={[
-                    { flex: 1.6, node: <div><span className="t-bodys" style={{ fontSize: 14.5 }}>{f.name}</span><div className="t-cap ink-3">{f.branch}</div></div> },
-                    { flex: 1, node: <span className="t-sm mono ink-2">{f.date}</span> },
-                    { flex: 1.2, node: f.flagged ? <StatusChip status="err">İtirazlı / bayraklı</StatusChip> : <StatusChip status={stTone[f.status]?.[0] ?? 'neu'}>{stTone[f.status]?.[1] ?? f.status}</StatusChip> },
-                    { flex: 0.9, node: <span className="t-sm mono">{hhmm(f.netMin)}</span> },
-                    { flex: 0.9, node: <span className="t-sm mono" style={{ color: f.diffMin >= 0 ? 'var(--ok-ink)' : 'var(--warn-ink)' }}>{f.diffMin >= 0 ? '+' : '-'}{hhmm(f.diffMin)}</span> },
-                    { w: 140, align: 'right', node: <StatusChip status={sla[0]}>{sla[1]}</StatusChip> },
-                  ]} />
-                )
-              })}
-            </Table>
+          {/* ── Bayraklı kayıtlar (katlanır — varsayılan kapalı) ── */}
+          <button className="card row-press rowx between" onClick={() => setFlaggedOpen(o => !o)}
+            style={{ width: '100%', padding: '15px 18px', margin: '24px 0 0', cursor: 'pointer', border: '1px solid var(--border)', alignItems: 'center' }}>
+            <div className="rowx gap10" style={{ alignItems: 'center' }}>
+              <Icon name="alert" size={18} color={(d?.flagged.length ?? 0) > 0 ? 'var(--warn-ink)' : 'var(--ink-3)'} />
+              <span className="t-bodys" style={{ fontSize: 15 }}>Bayraklı kayıtlar</span>
+              {(d?.flagged.length ?? 0) > 0 && <StatusChip status="warn">{d!.flagged.length}</StatusChip>}
+              {overdue > 0 && <StatusChip status="err">{overdue} gecikmiş</StatusChip>}
+            </div>
+            <Icon name={flaggedOpen ? 'chevronDown' : 'chevron'} size={18} color="var(--ink-3)" />
+          </button>
+          {flaggedOpen && (
+            <div style={{ marginTop: 12 }}>
+              <div className="t-cap ink-3" style={{ marginBottom: 12 }}>Çözüm süresi: bir bayraklı kaydın kaç gündür açık olduğunu gösterir; geciken kayıt bordroyu etkiler.</div>
+              {(d?.flagged.length ?? 0) === 0 ? <div className="card" style={{ padding: 24 }}><span className="t-body ink-2">Bayraklı kayıt yok</span></div> : (
+                <Table cols={[{ label: 'ÇALIŞAN', flex: 1.6 }, { label: 'GÜN', flex: 1 }, { label: 'DURUM', flex: 1.2 }, { label: 'NET', flex: 0.9 }, { label: 'FARK', flex: 0.9 }, { label: 'ÇÖZÜM SÜRESİ', w: 140, align: 'right' }]}>
+                  {d!.flagged.map((f, i) => {
+                    const sla = slaOf(f.ageDays)
+                    return (
+                      <Row key={i} i={i} cells={[
+                        { flex: 1.6, node: <div><span className="t-bodys" style={{ fontSize: 14.5 }}>{f.name}</span><div className="t-cap ink-3">{f.branch}</div></div> },
+                        { flex: 1, node: <span className="t-sm mono ink-2">{f.date}</span> },
+                        { flex: 1.2, node: f.flagged ? <StatusChip status="err">İtirazlı / bayraklı</StatusChip> : <StatusChip status={stTone[f.status]?.[0] ?? 'neu'}>{stTone[f.status]?.[1] ?? f.status}</StatusChip> },
+                        { flex: 0.9, node: <span className="t-sm mono">{hhmm(f.netMin)}</span> },
+                        { flex: 0.9, node: <span className="t-sm mono" style={{ color: f.diffMin >= 0 ? 'var(--ok-ink)' : 'var(--warn-ink)' }}>{f.diffMin >= 0 ? '+' : '-'}{hhmm(f.diffMin)}</span> },
+                        { w: 140, align: 'right', node: <StatusChip status={sla[0]}>{sla[1]}</StatusChip> },
+                      ]} />
+                    )
+                  })}
+                </Table>
+              )}
+            </div>
           )}
 
           {(d?.overtimeWeeks.length ?? 0) > 0 && (
