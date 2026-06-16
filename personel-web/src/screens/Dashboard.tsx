@@ -69,7 +69,7 @@ export function Dashboard() {
               ))}
             </div>
             <div className="rowx gap6" style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-              <Icon name="refresh" size={14} color="var(--ink-3)" /><span className="t-cap ink-3" style={{ whiteSpace: 'nowrap' }}>son sync {b.sync}</span>
+              <Icon name="refresh" size={14} color="var(--ink-3)" /><span className="t-cap ink-3" style={{ whiteSpace: 'nowrap' }}>son eşitleme {b.sync}</span>
             </div>
           </div>
         ))}
