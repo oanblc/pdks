@@ -15,8 +15,10 @@ export function Approvals() {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
   const [kind, setKind] = useState('all')
+  const [sel, setSel] = useState<Set<number>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
 
-  const load = () => api.requests().then((r: any) => { setReqs(r); setLoading(false) }).catch(() => setLoading(false))
+  const load = () => api.requests().then((r: any) => { setReqs(r); setLoading(false); setSel(new Set()) }).catch(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const decide = async (id: number, approve: boolean) => {
@@ -32,6 +34,20 @@ export function Approvals() {
     if (ql && !`${r.name} ${r.type} ${r.detail || ''}`.toLowerCase().includes(ql)) return false
     return true
   })
+  // Toplu işlem yalnız admin kademesindeki bekleyen talepler için
+  const isSelectable = (r: Req) => r.stage === 'admin' && r.status === 'pending'
+  const selectableRows = rows.filter(isSelectable)
+  const allSelected = selectableRows.length > 0 && selectableRows.every(r => sel.has(r.id))
+  const toggle = (id: number) => setSel(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleAll = () => setSel(allSelected ? new Set() : new Set(selectableRows.map(r => r.id)))
+  const bulkDecide = async (decision: 'approve' | 'reject') => {
+    const ids = [...sel]
+    if (!ids.length) return
+    if (decision === 'reject' && !confirm(`${ids.length} talep reddedilsin mi?`)) return
+    setBulkBusy(true)
+    try { await api.bulkDecideRequests(ids, decision); await load() }
+    catch (e: any) { alert(e.message) } finally { setBulkBusy(false) }
+  }
 
   return (
     <div>
@@ -69,7 +85,23 @@ export function Approvals() {
           </div>
         ) : (
           <>
-            <Table cols={[{ label: 'ÇALIŞAN', flex: 1.7 }, { label: 'TÜR', flex: 1.3 }, { label: 'DETAY · MÜDÜR GÖRÜŞÜ', flex: 2 }, { label: 'KADEME', w: 150 }, { label: 'DURUM', w: 110 }, { label: 'AKSİYON', w: 200, align: 'right' }]}>
+            {/* Toplu işlem çubuğu */}
+            {selectableRows.length > 0 && (
+              <div className="rowx between" style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 'var(--r-sm)', background: sel.size > 0 ? 'var(--brand-50)' : 'var(--surface-2)', border: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
+                <label className="rowx gap8" style={{ alignItems: 'center', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ width: 18, height: 18, accentColor: 'var(--brand-600)' }} />
+                  <span className="t-sm">{sel.size > 0 ? `${sel.size} talep seçili` : `Tümünü seç (${selectableRows.length} admin onayı)`}</span>
+                </label>
+                {sel.size > 0 && (
+                  <div className="rowx gap8">
+                    <button className="btn" disabled={bulkBusy} onClick={() => bulkDecide('approve')} style={{ height: 36, padding: '0 16px', borderRadius: 'var(--r-sm)', background: 'var(--ok-bg)', color: 'var(--ok-ink)', border: '1px solid var(--ok-ring)', fontSize: 13.5, opacity: bulkBusy ? 0.6 : 1 }}>{bulkBusy ? 'İşleniyor…' : `Seçilenleri onayla (${sel.size})`}</button>
+                    <button className="btn" disabled={bulkBusy} onClick={() => bulkDecide('reject')} style={{ height: 36, padding: '0 14px', borderRadius: 'var(--r-sm)', background: 'transparent', color: 'var(--err)', border: '1px solid var(--err-ring)', fontSize: 13.5, opacity: bulkBusy ? 0.6 : 1 }}>Reddet</button>
+                    <button className="btn btn-ghost" disabled={bulkBusy} onClick={() => setSel(new Set())} style={{ height: 36, fontSize: 13.5 }}>Temizle</button>
+                  </div>
+                )}
+              </div>
+            )}
+            <Table cols={[{ label: '', w: 44 }, { label: 'ÇALIŞAN', flex: 1.7 }, { label: 'TÜR', flex: 1.3 }, { label: 'DETAY · MÜDÜR GÖRÜŞÜ', flex: 2 }, { label: 'KADEME', w: 150 }, { label: 'DURUM', w: 110 }, { label: 'AKSİYON', w: 200, align: 'right' }]}>
               {rows.map((r, i) => {
                 const atAdmin = r.stage === 'admin' && r.status === 'pending'
                 const stageChip: [Tone, string] = r.stage === 'done' ? ['neu', 'Tamamlandı']
@@ -78,6 +110,7 @@ export function Approvals() {
                   : ['warn', 'Müdürde']
                 return (
                   <Row key={r.id} i={i} cells={[
+                    { w: 44, node: atAdmin ? <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} onClick={ev => ev.stopPropagation()} style={{ width: 18, height: 18, accentColor: 'var(--brand-600)', cursor: 'pointer' }} /> : <span /> },
                     { flex: 1.7, node: <div className="rowx gap12"><Avatar name={r.name} size={36} /><div><div className="t-bodys" style={{ fontSize: 14.5 }}>{r.name}</div>{r.branch && <div className="t-cap ink-3">{r.branch}</div>}</div></div> },
                     { flex: 1.3, node: <div className="rowx gap8"><Icon name={r.kind === 'fix' ? 'edit' : 'calendar'} size={18} color="var(--brand-700)" /><span className="t-body">{r.type}</span></div> },
                     { flex: 2, node: <div style={{ minWidth: 0 }}>

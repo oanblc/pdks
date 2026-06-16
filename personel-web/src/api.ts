@@ -51,6 +51,8 @@ export const api = {
   requests: () => req('/api/requests'),
   approveRequest: (id: number) => req(`/api/requests/${id}/approve`, { method: 'POST' }),
   rejectRequest: (id: number) => req(`/api/requests/${id}/reject`, { method: 'POST' }),
+  bulkDecideRequests: (ids: number[], decision: 'approve' | 'reject') =>
+    req('/api/requests/bulk-decide', { method: 'POST', body: JSON.stringify({ ids, decision }) }) as Promise<{ ok: boolean; done: number; skipped: number }>,
   audit: () => req('/api/audit'),
   shifts: () => req('/api/shifts'),
   timesheet: (month?: string) => req(`/api/timesheet${month ? `?month=${month}` : ''}`),

@@ -4,9 +4,27 @@ import { Icon } from '../icons'
 import { api } from '../api'
 import { PageHead, StatCard, SearchInput, Table, Row, type Tone } from '../ui'
 
-type Row0 = { name: string; branch: string | null; dept: string | null; netHours: number; overtimeHours: number; late: number; missing: number }
+type Row0 = { name: string; sicil?: string | null; branch: string | null; dept: string | null; workedDays?: number; netHours: number; overtimeHours: number; late: number; missing: number; leaveDays?: number; holidayDays?: number }
 type Data = { month: string; rows: Row0[] }
 type Metric = 'netHours' | 'overtimeHours' | 'late' | 'missing'
+
+// Yasal puantaj/bordro PDF çıktısı (yazdırılabilir)
+function printPdf(title: string, header: string[], rows: (string | number | null)[][]) {
+  const esc = (s: any) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!))
+  const thead = header.map(h => `<th>${esc(h)}</th>`).join('')
+  const tbody = rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
+    <style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#15201f;padding:28px}
+    h1{font-size:18px;margin:0 0 4px}.sub{color:#6b7a78;font-size:12px;margin-bottom:18px}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    th{text-align:left;border-bottom:2px solid #0e6b6b;padding:7px 5px;color:#0e6b6b;text-transform:uppercase;font-size:9.5px}
+    td{padding:6px 5px;border-bottom:1px solid #e6ece9}</style></head>
+    <body><h1>${esc(title)}</h1><div class="sub">puanto · Yasal puantaj / bordro kaynağı · ${new Date().toLocaleString('tr-TR')}</div>
+    <table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>
+    <script>window.onload=function(){window.print()}</script></body></html>`
+  const w = window.open('', '_blank'); if (!w) { alert('PDF için açılır pencereye izin verin.'); return }
+  w.document.write(html); w.document.close()
+}
 
 const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
 const monthLabel = (m: string) => { const [y, mo] = m.split('-').map(Number); return `${AYLAR[mo - 1]} ${y}` }
@@ -47,13 +65,16 @@ export function Reports() {
   const max = Math.max(1, ...rows.map(r => r[metric]))
   const mDef = METRICS.find(m => m.key === metric)!
 
+  // Bordro/yasal puantaj sütunları — tam kapsam
+  const repHeader = ['Sicil', 'Ad', 'Şube', 'Departman', 'Çalışılan gün', 'Net (s)', 'Fazla mesai (s)', 'İzin (gün)', 'Tatil (gün)', 'Geç (gün)', 'Eksik (gün)']
+  const repRows = (): (string | number | null)[][] => sorted.map(r => [r.sicil ?? '', r.name, r.branch, r.dept, r.workedDays ?? 0, r.netHours, r.overtimeHours, r.leaveDays ?? 0, r.holidayDays ?? 0, r.late, r.missing])
   const exportCsv = () => {
     const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const head = ['Ad', 'Şube', 'Departman', 'Net (s)', 'Fazla mesai (s)', 'Geç (gün)', 'Eksik (gün)']
-    const lines = [head.join(','), ...rows.map(r => [r.name, r.branch, r.dept, r.netHours, r.overtimeHours, r.late, r.missing].map(esc).join(','))]
+    const lines = [repHeader.join(','), ...repRows().map(r => r.map(esc).join(','))]
     const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `rapor-${month}.csv`; a.click(); URL.revokeObjectURL(url)
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `bordro-puantaj-${month}.csv`; a.click(); URL.revokeObjectURL(url)
   }
+  const exportPdf = () => printPdf(`Bordro / Yasal puantaj · ${monthLabel(month)}`, repHeader, repRows())
 
   return (
     <div>
@@ -65,6 +86,7 @@ export function Reports() {
             <button className="btn btn-ghost" disabled={isCurrent} onClick={() => setMonth(m => shiftMonth(m, 1))} style={{ width: 40, height: 44, padding: 0, opacity: isCurrent ? 0.4 : 1 }}><Icon name="chevron" size={18} color="var(--ink)" /></button>
           </div>
           <button className="btn btn-ghost" style={{ height: 44 }} onClick={exportCsv}><Icon name="doc" size={18} color="var(--ink)" /> Excel</button>
+          <button className="btn btn-ghost" style={{ height: 44 }} onClick={exportPdf}><Icon name="doc" size={18} color="var(--ink)" /> PDF</button>
         </>} />
 
       <div className="rowx gap14" style={{ marginBottom: 18 }}>
@@ -114,16 +136,19 @@ export function Reports() {
             </div>
           </div>
 
-          {/* Tablo */}
-          <Table cols={[{ label: 'ÇALIŞAN', flex: 1.8 }, { label: 'ŞUBE / DEPT', flex: 1.4 }, { label: 'NET (s)', flex: 1, align: 'right' }, { label: 'FAZLA (s)', flex: 1, align: 'right' }, { label: 'GEÇ', w: 80, align: 'right' }, { label: 'EKSİK', w: 80, align: 'right' }]}>
+          {/* Bordro / yasal puantaj tablosu */}
+          <div className="t-h3" style={{ margin: '4px 0 10px' }}>Bordro / yasal puantaj <span className="t-cap ink-3">· {monthLabel(month)} · Excel/PDF olarak dışa aktarılabilir</span></div>
+          <Table cols={[{ label: 'ÇALIŞAN', flex: 1.7 }, { label: 'ŞUBE / DEPT', flex: 1.3 }, { label: 'GÜN', w: 60, align: 'right' }, { label: 'NET (s)', w: 78, align: 'right' }, { label: 'FAZLA (s)', w: 82, align: 'right' }, { label: 'İZİN', w: 60, align: 'right' }, { label: 'TATİL', w: 64, align: 'right' }, { label: 'EKSİK', w: 64, align: 'right' }]}>
             {sorted.map((r, i) => (
               <Row key={i} i={i} cells={[
-                { flex: 1.8, node: <span className="t-bodys" style={{ fontSize: 14.5 }}>{r.name}</span> },
-                { flex: 1.4, node: <span className="t-cap ink-3">{r.branch || '—'}{r.dept ? ` · ${r.dept}` : ''}</span> },
-                { flex: 1, align: 'right', node: <span className="t-sm mono">{r.netHours}</span> },
-                { flex: 1, align: 'right', node: <span className="t-sm mono" style={{ color: r.overtimeHours ? 'var(--brand-700)' : 'var(--ink-3)' }}>{r.overtimeHours}</span> },
-                { w: 80, align: 'right', node: <span className="t-sm mono" style={{ color: r.late ? 'var(--warn-ink)' : 'var(--ink-3)' }}>{r.late}</span> },
-                { w: 80, align: 'right', node: <span className="t-sm mono" style={{ color: r.missing ? 'var(--err-ink)' : 'var(--ink-3)' }}>{r.missing}</span> },
+                { flex: 1.7, node: <div><span className="t-bodys" style={{ fontSize: 14.5 }}>{r.name}</span><div className="t-cap ink-3 mono">SİCİL {r.sicil || '—'}</div></div> },
+                { flex: 1.3, node: <span className="t-cap ink-3">{r.branch || '—'}{r.dept ? ` · ${r.dept}` : ''}</span> },
+                { w: 60, align: 'right', node: <span className="t-sm mono">{r.workedDays ?? 0}</span> },
+                { w: 78, align: 'right', node: <span className="t-sm mono">{r.netHours}</span> },
+                { w: 82, align: 'right', node: <span className="t-sm mono" style={{ color: r.overtimeHours ? 'var(--brand-700)' : 'var(--ink-3)' }}>{r.overtimeHours}</span> },
+                { w: 60, align: 'right', node: <span className="t-sm mono" style={{ color: (r.leaveDays ?? 0) ? 'var(--ink)' : 'var(--ink-3)' }}>{r.leaveDays ?? 0}</span> },
+                { w: 64, align: 'right', node: <span className="t-sm mono ink-3">{r.holidayDays ?? 0}</span> },
+                { w: 64, align: 'right', node: <span className="t-sm mono" style={{ color: r.missing ? 'var(--err-ink)' : 'var(--ink-3)' }}>{r.missing}</span> },
               ]} />
             ))}
           </Table>

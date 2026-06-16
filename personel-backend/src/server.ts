@@ -566,6 +566,22 @@ async function decideRequest(req: any, reply: any, status: 'approved' | 'rejecte
 app.post('/api/requests/:id/approve', { preHandler: requireAdmin }, (req, reply) => decideRequest(req, reply, 'approved'));
 app.post('/api/requests/:id/reject', { preHandler: requireAdmin }, (req, reply) => decideRequest(req, reply, 'rejected'));
 
+// Toplu onay/ret: birden çok talebi tek seferde sonuçlandır (yalnız hâlâ sonuçlanmamış olanlar)
+app.post('/api/requests/bulk-decide', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({ ids: z.array(z.number().int()).min(1).max(200), decision: z.enum(['approve', 'reject']) }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçersiz toplu işlem');
+  const status = p.data.decision === 'approve' ? 'approved' : 'rejected';
+  let done = 0, skipped = 0;
+  for (const id of p.data.ids) {
+    const r = await prisma.request.findUnique({ where: { id }, include: { employee: true } });
+    if (!r || r.stage === 'done') { skipped++; continue; }
+    await prisma.request.update({ where: { id }, data: { status, stage: 'done' } });
+    await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'onay', action: status === 'approved' ? 'Talep onaylandı (toplu)' : 'Talep reddedildi (toplu)', detail: `${r.employee.name} · ${r.type}` } });
+    done++;
+  }
+  return { ok: true, done, skipped };
+});
+
 /* ───────── DENETİM KAYDI ───────── */
 app.get('/api/audit', { preHandler: requireAdmin }, async () => {
   const a = await prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
@@ -1254,7 +1270,22 @@ app.get('/api/reports', { preHandler: requireAdmin }, async (req: any) => {
   const cfg = await getRiskCfg();
   const month = safeMonth(req.query?.month);
   const { start, end } = monthRange(month);
+  const startKey = dKey(start), endKey = dKey(new Date(end.getTime() - 86400000));
   const emps = await prisma.employee.findMany({ where: { status: 'active' }, include: { shift: true, branch: true } });
+
+  // İzin ve tatil verisini tek seferde yükle (bordro/yasal puantaj kolonları için)
+  const leaveReqs = await prisma.request.findMany({ where: { kind: 'leave', status: 'approved', leaveStart: { lte: endKey }, leaveEnd: { gte: startKey } } });
+  const leavesByEmp = new Map<number, Set<string>>();
+  for (const r of leaveReqs) {
+    if (!r.leaveStart || !r.leaveEnd) continue;
+    const s = r.leaveStart < startKey ? startKey : r.leaveStart, e = r.leaveEnd > endKey ? endKey : r.leaveEnd;
+    let d = new Date(s + 'T00:00:00'); const de = new Date(e + 'T00:00:00');
+    const set = leavesByEmp.get(r.employeeId) ?? new Set<string>();
+    while (d <= de) { set.add(dKey(d)); d = new Date(d.getTime() + 86400000); }
+    leavesByEmp.set(r.employeeId, set);
+  }
+  const holiMap = await holidayDays(startKey, endKey);
+
   const rows: any[] = [];
   for (const emp of emps) {
     const punches = await prisma.punch.findMany({ where: { employeeId: emp.id, serverTime: { gte: start, lt: end } }, orderBy: { serverTime: 'asc' } });
@@ -1264,7 +1295,15 @@ app.get('/api/reports', { preHandler: requireAdmin }, async (req: any) => {
     const ot = days.reduce((s, r) => s + Math.max(0, r.diffMin), 0);
     const late = days.filter(r => r.in && toMin(r.in) > startMin + cfg.lateToleranceMin).length;
     const miss = days.filter(r => r.status === 'missing' && !r.inProgress).length;
-    rows.push({ name: emp.name, branch: emp.branch?.name ?? null, dept: emp.dept ?? null, netHours: +(net / 60).toFixed(1), overtimeHours: +(ot / 60).toFixed(1), late, missing: miss });
+    const leaveDays = (leavesByEmp.get(emp.id)?.size) ?? 0;
+    // Bu çalışanın şubesi için kapalı tatil gün sayısı (çalışmadığı resmi/dini tatil)
+    let holidayDaysCount = 0;
+    for (const [, h] of holiMap) { const closed = !(emp.branchId != null && h.working.includes(emp.branchId)); if (closed) holidayDaysCount++; }
+    rows.push({
+      name: emp.name, sicil: emp.sicil ?? null, branch: emp.branch?.name ?? null, dept: emp.dept ?? null,
+      workedDays: days.length, netHours: +(net / 60).toFixed(1), overtimeHours: +(ot / 60).toFixed(1),
+      late, missing: miss, leaveDays, holidayDays: holidayDaysCount,
+    });
   }
   return { month, rows };
 });
