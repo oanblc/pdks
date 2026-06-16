@@ -51,40 +51,44 @@ export function Branches() {
 
   return (
     <div>
-      <PageHead title="Şube & Tablet" subtitle={`${branches.length} şube · ${devices.length} cihaz · canlı veri`}
-        actions={<>
-          <button className="btn btn-ghost" style={{ height: 44 }} onClick={() => setShowBranch(true)}><Icon name="building" size={18} color="var(--ink)" /> Şube ekle</button>
-          <button className="btn btn-primary" style={{ height: 44 }} onClick={() => setPairBranch(0)}><Icon name="plus" size={19} color="#fff" /> Cihaz eşle</button>
-        </>} />
-      <div className="rowx gap14" style={{ marginBottom: 18 }}>
-        <StatCard label="Şube" value={branches.length} sub="tanımlı" icon="building" />
-        <StatCard label="Cihaz" value={devices.length} sub="kayıtlı" icon="qr" />
-        <StatCard label="Aktif cihaz" value={active} sub="eşli kiosk" tone="ok" icon="check" />
-      </div>
-      {loading ? <div className="t-body ink-2">Yükleniyor…</div> : (
-        <Table cols={[{ label: 'ŞUBE', flex: 1.8 }, { label: 'CİHAZ', flex: 1.2 }, { label: 'KONUM', flex: 1.2 }, { label: '', w: 110, align: 'right' }]}>
-          {branches.map((b, i) => {
-            const ds = devsOf(b.id)
-            const act = ds.filter(d => d.status !== 'revoked').length
-            const locSet = b.lat != null && b.lng != null
-            return (
-              <Row key={b.id} i={i} onClick={() => setSelBranch(b.id)} cells={[
-                { flex: 1.8, node: <div className="rowx gap12"><div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--brand-50)', display: 'grid', placeItems: 'center' }}><Icon name="building" size={19} color="var(--brand-700)" /></div><div><div className="t-bodys" style={{ fontSize: 15 }}>{b.name}</div><div className="t-cap ink-3">{b.city || '—'}</div></div></div> },
-                { flex: 1.2, node: ds.length ? <span className="t-body">{ds.length} cihaz<span className="ink-3"> · {act} aktif</span></span> : <span className="t-sm ink-3">cihaz yok</span> },
-                { flex: 1.2, node: locSet ? <StatusChip status="ok">Konum sınırı · {b.radius ?? 100} m</StatusChip> : <StatusChip status="warn">Konum yok</StatusChip> },
-                { w: 110, align: 'right', node: <span className="t-sm" style={{ color: 'var(--brand-700)' }}>Yönet ›</span> },
-              ]} />
-            )
-          })}
-        </Table>
+      {sel ? (
+        <BranchDetailPage branch={sel} devices={devsOf(sel.id)} busy={busy} onBack={() => setSelBranch(null)}
+          onPair={() => setPairBranch(sel.id)} onEditDevice={setEditDev} onEditLocation={() => setEditLoc(sel)} onRevoke={revoke} onReactivate={reactivate} />
+      ) : (
+        <>
+          <PageHead title="Şube & Tablet" subtitle={`${branches.length} şube · ${devices.length} cihaz · canlı veri`}
+            actions={<>
+              <button className="btn btn-ghost" style={{ height: 44 }} onClick={() => setShowBranch(true)}><Icon name="building" size={18} color="var(--ink)" /> Şube ekle</button>
+              <button className="btn btn-primary" style={{ height: 44 }} onClick={() => setPairBranch(0)}><Icon name="plus" size={19} color="#fff" /> Cihaz eşle</button>
+            </>} />
+          <div className="rowx gap14" style={{ marginBottom: 18 }}>
+            <StatCard label="Şube" value={branches.length} sub="tanımlı" icon="building" />
+            <StatCard label="Cihaz" value={devices.length} sub="kayıtlı" icon="qr" />
+            <StatCard label="Aktif cihaz" value={active} sub="eşli kiosk" tone="ok" icon="check" />
+          </div>
+          {loading ? <div className="t-body ink-2">Yükleniyor…</div> : (
+            <Table cols={[{ label: 'ŞUBE', flex: 1.8 }, { label: 'CİHAZ', flex: 1.2 }, { label: 'KONUM', flex: 1.2 }, { label: '', w: 110, align: 'right' }]}>
+              {branches.map((b, i) => {
+                const ds = devsOf(b.id)
+                const act = ds.filter(d => d.status !== 'revoked').length
+                const locSet = b.lat != null && b.lng != null
+                return (
+                  <Row key={b.id} i={i} onClick={() => setSelBranch(b.id)} cells={[
+                    { flex: 1.8, node: <div className="rowx gap12"><div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--brand-50)', display: 'grid', placeItems: 'center' }}><Icon name="building" size={19} color="var(--brand-700)" /></div><div><div className="t-bodys" style={{ fontSize: 15 }}>{b.name}</div><div className="t-cap ink-3">{b.city || '—'}</div></div></div> },
+                    { flex: 1.2, node: ds.length ? <span className="t-body">{ds.length} cihaz<span className="ink-3"> · {act} aktif</span></span> : <span className="t-sm ink-3">cihaz yok</span> },
+                    { flex: 1.2, node: locSet ? <StatusChip status="ok">Konum sınırı · {b.radius ?? 100} m</StatusChip> : <StatusChip status="warn">Konum yok</StatusChip> },
+                    { w: 110, align: 'right', node: <span className="t-sm" style={{ color: 'var(--brand-700)' }}>Yönet ›</span> },
+                  ]} />
+                )
+              })}
+            </Table>
+          )}
+          <div className="rowx gap8" style={{ marginTop: 14 }}>
+            <Icon name="shield" size={16} color="var(--ink-3)" />
+            <span className="t-cap ink-3">Şubeye tıklayıp cihazlarını, konumunu ve tatil durumlarını yönet. Bir tablette sorun olursa aynı şubeye ikinci bir cihaz eşleyin; takip kesintisiz devam eder.</span>
+          </div>
+        </>
       )}
-      <div className="rowx gap8" style={{ marginTop: 14 }}>
-        <Icon name="shield" size={16} color="var(--ink-3)" />
-        <span className="t-cap ink-3">Şubeye tıklayıp cihazlarını ve konumunu yönet. Bir tablette sorun olursa aynı şubeye ikinci bir cihaz eşleyin; takip kesintisiz devam eder.</span>
-      </div>
-
-      {sel && <BranchDetailModal branch={sel} devices={devsOf(sel.id)} busy={busy} onClose={() => setSelBranch(null)}
-        onPair={() => setPairBranch(sel.id)} onEditDevice={setEditDev} onEditLocation={() => setEditLoc(sel)} onRevoke={revoke} onReactivate={reactivate} />}
 
       {showBranch && <AddBranchModal onClose={() => setShowBranch(false)} onDone={() => { setShowBranch(false); load(); setAssignPrompt(true) }} />}
       {assignPrompt && (
@@ -109,56 +113,94 @@ export function Branches() {
   )
 }
 
-function BranchDetailModal({ branch, devices, busy, onClose, onPair, onEditDevice, onEditLocation, onRevoke, onReactivate }:
-  { branch: Branch; devices: Device[]; busy: number | null; onClose: () => void; onPair: () => void; onEditDevice: (d: Device) => void; onEditLocation: () => void; onRevoke: (id: number) => void; onReactivate: (id: number) => void }) {
+type Holi = { id: number; date: string; name: string; type: 'resmi' | 'dini' | 'custom'; workingBranchIds: number[] }
+const fmtDate = (s: string) => { const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : s }
+
+function BranchDetailPage({ branch, devices, busy, onBack, onPair, onEditDevice, onEditLocation, onRevoke, onReactivate }:
+  { branch: Branch; devices: Device[]; busy: number | null; onBack: () => void; onPair: () => void; onEditDevice: (d: Device) => void; onEditLocation: () => void; onRevoke: (id: number) => void; onReactivate: (id: number) => void }) {
   const locSet = branch.lat != null && branch.lng != null
+  const [holidays, setHolidays] = useState<Holi[]>([])
+  useEffect(() => { api.holidays().then((h: any) => setHolidays(h)).catch(() => {}) }, [])
+  const today = new Date().toISOString().slice(0, 10)
+  const upcoming = holidays.filter(h => h.date >= today)
+
   return (
-    <Modal title={branch.name} onClose={onClose} width={560}
-      footer={<button className="btn btn-ghost" style={{ height: 42 }} onClick={onClose}>Kapat</button>}>
-      <div className="t-cap ink-3" style={{ marginTop: -4 }}>{branch.city || '—'}</div>
+    <div>
+      <button className="btn btn-ghost" onClick={onBack} style={{ height: 34, marginBottom: 12, paddingLeft: 4 }}><Icon name="chevronL" size={18} color="var(--ink-2)" /> Şube & Tablet</button>
+      <div className="rowx gap12" style={{ marginBottom: 18 }}>
+        <div style={{ width: 46, height: 46, borderRadius: 12, background: 'var(--brand-50)', display: 'grid', placeItems: 'center' }}><Icon name="building" size={22} color="var(--brand-700)" /></div>
+        <div><div className="t-h2">{branch.name}</div><div className="t-cap ink-3">{branch.city || '—'}</div></div>
+      </div>
 
       {/* Konum / geofence */}
-      <div className="rowx between" style={{ padding: '12px 14px', borderRadius: 'var(--r-sm)', background: 'var(--surface-2)', border: '1px solid var(--border)', gap: 12 }}>
-        <div className="rowx gap10" style={{ minWidth: 0 }}>
-          <Icon name="pin" size={18} color={locSet ? 'var(--brand-700)' : 'var(--warn-ink)'} />
-          <div style={{ minWidth: 0 }}>
-            <div className="t-sm">{locSet ? `Konum sınırı · ${branch.radius ?? 100} m yarıçap` : 'Konum tanımlı değil'}</div>
-            <div className="t-cap ink-3 mono">{locSet ? `${branch.lat!.toFixed(5)}, ${branch.lng!.toFixed(5)}` : 'QR okutma için şube konumu gerekli'}</div>
+      <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+        <div className="rowx between" style={{ gap: 12 }}>
+          <div className="rowx gap10" style={{ minWidth: 0 }}>
+            <Icon name="pin" size={18} color={locSet ? 'var(--brand-700)' : 'var(--warn-ink)'} />
+            <div style={{ minWidth: 0 }}>
+              <div className="t-sm">{locSet ? `Konum sınırı · ${branch.radius ?? 100} m yarıçap` : 'Konum tanımlı değil'}</div>
+              <div className="t-cap ink-3 mono">{locSet ? `${branch.lat!.toFixed(5)}, ${branch.lng!.toFixed(5)}` : 'QR okutma için şube konumu gerekli'}</div>
+            </div>
           </div>
+          <button className="btn btn-ghost" onClick={onEditLocation} style={{ height: 36, whiteSpace: 'nowrap' }}>{locSet ? 'Düzenle' : 'Konum ayarla'}</button>
         </div>
-        <button className="btn btn-ghost" onClick={onEditLocation} style={{ height: 36, whiteSpace: 'nowrap' }}>{locSet ? 'Düzenle' : 'Konum ayarla'}</button>
       </div>
 
       {/* Cihazlar */}
-      <div className="rowx between" style={{ margin: '6px 0 2px' }}>
-        <span className="t-bodys" style={{ fontSize: 14.5 }}>Cihazlar ({devices.length})</span>
-        <button className="btn btn-primary" onClick={onPair} style={{ height: 36, padding: '0 12px', fontSize: 13 }}><Icon name="plus" size={16} color="#fff" /> Cihaz eşle</button>
-      </div>
-      {devices.length === 0 ? (
-        <div className="card" style={{ padding: 18, textAlign: 'center' }}><span className="t-sm ink-3">Bu şubeye henüz cihaz eşlenmedi.</span></div>
-      ) : devices.map(d => {
-        const revoked = d.status === 'revoked'
-        const st = revoked ? statusMap.revoked : (statusMap[d.status] ?? ['neu', d.status])
-        return (
-          <div key={d.id} className="rowx between" style={{ padding: '11px 13px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', gap: 10 }}>
-            <div className="rowx gap12" style={{ minWidth: 0 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}><Icon name="qr" size={17} color="var(--ink-2)" /></div>
-              <div style={{ minWidth: 0 }}>
-                <div className="t-bodys mono" style={{ fontSize: 14 }}>{d.code}</div>
-                <div className="t-cap ink-3">{d.label || '— kullanım yeri belirtilmedi'}</div>
+      <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+        <div className="rowx between" style={{ marginBottom: 12 }}>
+          <span className="t-bodys" style={{ fontSize: 15 }}>Cihazlar ({devices.length})</span>
+          <button className="btn btn-primary" onClick={onPair} style={{ height: 36, padding: '0 12px', fontSize: 13 }}><Icon name="plus" size={16} color="#fff" /> Cihaz eşle</button>
+        </div>
+        {devices.length === 0 ? (
+          <div className="t-sm ink-3" style={{ padding: 8 }}>Bu şubeye henüz cihaz eşlenmedi.</div>
+        ) : <div className="col" style={{ gap: 8 }}>{devices.map(d => {
+          const revoked = d.status === 'revoked'
+          const st = revoked ? statusMap.revoked : (statusMap[d.status] ?? ['neu', d.status])
+          return (
+            <div key={d.id} className="rowx between" style={{ padding: '11px 13px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', gap: 10 }}>
+              <div className="rowx gap12" style={{ minWidth: 0 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}><Icon name="qr" size={17} color="var(--ink-2)" /></div>
+                <div style={{ minWidth: 0 }}>
+                  <div className="t-bodys mono" style={{ fontSize: 14 }}>{d.code}</div>
+                  <div className="t-cap ink-3">{d.label || '— kullanım yeri belirtilmedi'}</div>
+                </div>
+              </div>
+              <div className="rowx gap8" style={{ whiteSpace: 'nowrap' }}>
+                <StatusChip status={st[0]}>{st[1]}</StatusChip>
+                <button className="btn btn-ghost" onClick={() => onEditDevice(d)} style={{ height: 32, padding: '0 10px', fontSize: 13 }}>Düzenle</button>
+                {revoked
+                  ? <button className="btn" disabled={busy === d.id} onClick={() => onReactivate(d.id)} style={{ height: 32, padding: '0 10px', borderRadius: 'var(--r-sm)', background: 'var(--ok-bg)', color: 'var(--ok-ink)', border: '1px solid var(--ok-ink)', fontSize: 13, opacity: busy === d.id ? 0.5 : 1 }}>Etkinleştir</button>
+                  : <button className="btn" disabled={busy === d.id} onClick={() => onRevoke(d.id)} style={{ height: 32, padding: '0 10px', borderRadius: 'var(--r-sm)', background: 'transparent', color: 'var(--err)', border: '1px solid var(--err-ring)', fontSize: 13, opacity: busy === d.id ? 0.45 : 1 }}>İptal</button>}
               </div>
             </div>
-            <div className="rowx gap8" style={{ whiteSpace: 'nowrap' }}>
-              <StatusChip status={st[0]}>{st[1]}</StatusChip>
-              <button className="btn btn-ghost" onClick={() => onEditDevice(d)} style={{ height: 32, padding: '0 10px', fontSize: 13 }}>Düzenle</button>
-              {revoked
-                ? <button className="btn" disabled={busy === d.id} onClick={() => onReactivate(d.id)} style={{ height: 32, padding: '0 10px', borderRadius: 'var(--r-sm)', background: 'var(--ok-bg)', color: 'var(--ok-ink)', border: '1px solid var(--ok-ink)', fontSize: 13, opacity: busy === d.id ? 0.5 : 1 }}>Etkinleştir</button>
-                : <button className="btn" disabled={busy === d.id} onClick={() => onRevoke(d.id)} style={{ height: 32, padding: '0 10px', borderRadius: 'var(--r-sm)', background: 'transparent', color: 'var(--err)', border: '1px solid var(--err-ring)', fontSize: 13, opacity: busy === d.id ? 0.45 : 1 }}>İptal</button>}
+          )
+        })}</div>}
+      </div>
+
+      {/* Tatiller — bu şube */}
+      <div className="card" style={{ padding: 16 }}>
+        <div className="rowx between" style={{ marginBottom: 12 }}>
+          <div><span className="t-bodys" style={{ fontSize: 15 }}>Tatiller</span><span className="t-cap ink-3"> · bu şubenin durumu</span></div>
+          <button className="btn btn-ghost" onClick={() => goto('holidays')} style={{ height: 32, padding: '0 10px', fontSize: 13 }}>Tümünü yönet ›</button>
+        </div>
+        {upcoming.length === 0 ? (
+          <div className="t-sm ink-3" style={{ padding: 8 }}>Yaklaşan tatil yok. Tatiller sayfasından ekleyebilirsiniz.</div>
+        ) : <div className="col" style={{ gap: 6 }}>{upcoming.map(h => {
+          const working = h.workingBranchIds.includes(branch.id)
+          return (
+            <div key={h.id} className="rowx between" style={{ padding: '10px 12px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', gap: 10 }}>
+              <div className="rowx gap10" style={{ minWidth: 0, alignItems: 'center' }}>
+                <span className="t-sm mono ink-2" style={{ width: 78, flex: 'none' }}>{fmtDate(h.date)}</span>
+                <span className="t-sm" style={{ minWidth: 0 }}>{h.name}</span>
+                <StatusChip status={h.type === 'resmi' ? 'brand' : 'neu'}>{h.type === 'resmi' ? 'Resmi' : h.type === 'dini' ? 'Dini' : 'Diğer'}</StatusChip>
+              </div>
+              <StatusChip status={working ? 'warn' : 'ok'}>{working ? 'Çalışılıyor' : 'Kapalı'}</StatusChip>
             </div>
-          </div>
-        )
-      })}
-    </Modal>
+          )
+        })}</div>}
+      </div>
+    </div>
   )
 }
 
