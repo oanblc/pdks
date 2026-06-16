@@ -17,7 +17,7 @@ const rangeLabel = (from: string, to: string) => from === to ? from : `${from} �
 
 type EmpRow = { id: number; name: string; branch: string | null; dept: string | null; sicil: string | null; present: number; netMin: number; overtimeMin: number; missing: number; flaggedCount: number }
 type Flag = { empId: number; name: string; branch: string; date: string; day: number; status: string; flagged: boolean; netMin: number; diffMin: number; ageDays: number }
-type Data = { month: string; employees: EmpRow[]; flagged: Flag[]; overtimeWeeks: { name: string; week: string; hours: number }[] }
+type Data = { month: string; employees: EmpRow[]; flagged: Flag[]; overtimeWeeks: { name: string; week: string; hours: number }[]; branches?: { name: string; workingDays: number[] }[] }
 const stTone: Record<string, [Tone, string]> = { missing: ['warn', 'Eksik basma'], over: ['brand', 'Fazla mesai'], short: ['warn', 'Kısa gün'], full: ['ok', 'Tam gün'], leave: ['neu', 'İzinli'], holiday: ['neu', 'Tatil (kapalı)'], 'holiday-work': ['brand', 'Bayram mesaisi'] }
 
 // "Çözüm süresi" (eski adıyla SLA): bayraklı kayıt kaç gündür açık
@@ -80,7 +80,7 @@ export function Timesheet() {
     return [...m.values()].sort((a, b) => (a.name < b.name ? -1 : 1))
   })()
 
-  if (openBranch) return <BranchSheet branch={openBranch} month={month} employees={d?.employees ?? []} flagged={d?.flagged ?? []} onBack={() => setOpenBranch(null)} />
+  if (openBranch) return <BranchSheet branch={openBranch} month={month} employees={d?.employees ?? []} flagged={d?.flagged ?? []} workingDays={d?.branches?.find(b => b.name === openBranch)?.workingDays} onBack={() => setOpenBranch(null)} />
 
   return (
     <div>
@@ -155,7 +155,7 @@ const GRID: Record<string, { bg: string; ink: string; code: string }> = {
 }
 const GRID_LEGEND: [string, string][] = [['T', 'Tam gün'], ['F', 'Fazla mesai'], ['K', 'Kısa gün'], ['E', 'Eksik basma'], ['İ', 'İzinli'], ['R', 'Tatil (kapalı)'], ['B', 'Bayram mesaisi'], ['D', 'Devamsız']]
 
-function BranchSheet({ branch, month, employees, flagged, onBack }: { branch: string; month: string; employees: EmpRow[]; flagged: Flag[]; onBack: () => void }) {
+function BranchSheet({ branch, month, employees, flagged, workingDays, onBack }: { branch: string; month: string; employees: EmpRow[]; flagged: Flag[]; workingDays?: number[]; onBack: () => void }) {
   const [openEmp, setOpenEmp] = useState<EmpRow | null>(null)
   const [flaggedOpen, setFlaggedOpen] = useState(false)
   const [calOpen, setCalOpen] = useState(false)
@@ -169,7 +169,8 @@ function BranchSheet({ branch, month, employees, flagged, onBack }: { branch: st
   const [yy, mm] = month.split('-').map(Number)
   const daysInMonth = new Date(yy, mm, 0).getDate()
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  const isWeekend = (dnum: number) => { const w = new Date(yy, mm - 1, dnum).getDay(); return w === 0 || w === 6 }
+  const openDays = workingDays ?? [1, 2, 3, 4, 5, 6] // şube açık günleri (getDay)
+  const isWeekend = (dnum: number) => !openDays.includes(new Date(yy, mm - 1, dnum).getDay())
   useEffect(() => {
     if (!calOpen || grid) return
     let cancelled = false

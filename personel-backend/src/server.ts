@@ -150,8 +150,8 @@ app.get('/api/branches', async (req: any) => {
   try { await req.jwtVerify(); isAdmin = req.user?.kind === 'admin'; } catch { /* anonim/çalışan */ }
   const branches = await prisma.branch.findMany({ orderBy: { id: 'asc' } });
   return branches.map(b => isAdmin
-    ? { id: b.id, name: b.name, city: b.city, shift: b.shift, lat: b.lat, lng: b.lng, radius: b.radius }
-    : { id: b.id, name: b.name, city: b.city, shift: b.shift });
+    ? { id: b.id, name: b.name, city: b.city, shift: b.shift, lat: b.lat, lng: b.lng, radius: b.radius, workingDays: parseWorkingDays((b as any).workingDays) }
+    : { id: b.id, name: b.name, city: b.city, shift: b.shift, workingDays: parseWorkingDays((b as any).workingDays) });
 });
 
 app.get('/api/me', { preHandler: requireEmployee }, async (req: any) => {
@@ -580,6 +580,12 @@ const isDate = (v: any) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v
 const MONTHKEY = /^\d{4}-(0[1-9]|1[0-2])$/;
 // Geçersiz/eksik ?month → bu ay (NaN Date + Prisma 500/stack sızıntısı yerine güvenli geri dönüş)
 const safeMonth = (m: any): string => (typeof m === 'string' && MONTHKEY.test(m)) ? m : currentMonth();
+// Şube haftalık açık günleri (getDay(): Paz=0..Cmt=6) — bozuk JSON'da Pzt–Cmt'ye düş
+const DEFAULT_WORKING_DAYS = [1, 2, 3, 4, 5, 6];
+const parseWorkingDays = (s: any): number[] => {
+  try { const a = JSON.parse(s); return Array.isArray(a) ? a.filter((n: any) => Number.isInteger(n) && n >= 0 && n <= 6) : DEFAULT_WORKING_DAYS; }
+  catch { return DEFAULT_WORKING_DAYS; }
+};
 function rangeFromQuery(q: any): { start: Date; end: Date; label: string } {
   if (isDate(q?.from) && isDate(q?.to)) {
     let a = new Date(q.from + 'T00:00:00'), b = new Date(q.to + 'T00:00:00');
@@ -795,13 +801,16 @@ app.patch('/api/branches/:id', { preHandler: requireAdmin }, async (req: any, re
     lat: z.number().min(-90).max(90).nullable().optional(),
     lng: z.number().min(-180).max(180).nullable().optional(),
     radius: z.number().int().min(20).max(5000).optional(),
+    workingDays: z.array(z.number().int().min(0).max(6)).optional(),
   }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   const data: any = {};
   for (const k of ['name', 'city', 'lat', 'lng', 'radius'] as const) if (p.data[k] !== undefined) data[k] = p.data[k];
+  if (p.data.workingDays !== undefined) data.workingDays = JSON.stringify([...new Set(p.data.workingDays)].sort((a, b) => a - b));
   const updated = await prisma.branch.update({ where: { id }, data });
-  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Şube bilgileri güncellendi', detail: `${updated.name}${data.lat != null ? ` · konum ${data.lat.toFixed(5)}, ${data.lng?.toFixed(5)}` : ''}${data.radius != null ? ` · sınır ${data.radius} m` : ''}` } });
-  return { id: updated.id, name: updated.name, city: updated.city, lat: updated.lat, lng: updated.lng, radius: updated.radius };
+  const wdDone = p.data.workingDays !== undefined;
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Şube bilgileri güncellendi', detail: `${updated.name}${data.lat != null ? ` · konum ${data.lat.toFixed(5)}, ${data.lng?.toFixed(5)}` : ''}${data.radius != null ? ` · sınır ${data.radius} m` : ''}${wdDone ? ` · çalışma günleri güncellendi` : ''}` } });
+  return { id: updated.id, name: updated.name, city: updated.city, lat: updated.lat, lng: updated.lng, radius: updated.radius, workingDays: parseWorkingDays((updated as any).workingDays) };
 });
 
 app.get('/api/devices', { preHandler: requireAdmin }, async () => {
@@ -1048,7 +1057,9 @@ app.get('/api/timesheet', { preHandler: requireAdmin }, async (req: any) => {
     for (const r of days) { const w = weekKey(new Date(r.date)); byWeek.set(w, (byWeek.get(w) || 0) + r.netMin); }
     for (const [w, min] of byWeek) if (min > 45 * 60) overtimeWeeks.push({ name: emp.name, week: w, hours: +(min / 60).toFixed(1) });
   }
-  return { month, employees, flagged, overtimeWeeks };
+  const allBranches = await prisma.branch.findMany({ orderBy: { id: 'asc' } });
+  const branches = allBranches.map(b => ({ name: b.name, workingDays: parseWorkingDays((b as any).workingDays) }));
+  return { month, employees, flagged, overtimeWeeks, branches };
 });
 
 /* ───────── ANOMALİ ───────── */

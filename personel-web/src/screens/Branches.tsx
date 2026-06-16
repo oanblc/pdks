@@ -6,7 +6,7 @@ import { consumeNavArg, goto } from '../nav'
 import { PageHead, StatCard, Table, Row, StatusChip, Modal, Field, type Tone } from '../ui'
 
 type Device = { id: number; code: string; label: string | null; branchId: number; branch: string; city: string; mode: string; status: string }
-type Branch = { id: number; name: string; city?: string; lat?: number | null; lng?: number | null; radius?: number }
+type Branch = { id: number; name: string; city?: string; lat?: number | null; lng?: number | null; radius?: number; workingDays?: number[] }
 
 const statusMap: Record<string, [Tone, string]> = {
   active: ['ok', 'Bağlı'],
@@ -52,7 +52,7 @@ export function Branches() {
   return (
     <div>
       {sel ? (
-        <BranchDetailPage branch={sel} devices={devsOf(sel.id)} busy={busy} onBack={() => setSelBranch(null)}
+        <BranchDetailPage branch={sel} devices={devsOf(sel.id)} busy={busy} onBack={() => setSelBranch(null)} onReload={load}
           onPair={() => setPairBranch(sel.id)} onEditDevice={setEditDev} onEditLocation={() => setEditLoc(sel)} onRevoke={revoke} onReactivate={reactivate} />
       ) : (
         <>
@@ -116,13 +116,28 @@ export function Branches() {
 type Holi = { id: number; date: string; name: string; type: 'resmi' | 'dini' | 'custom'; workingBranchIds: number[] }
 const fmtDate = (s: string) => { const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : s }
 
-function BranchDetailPage({ branch, devices, busy, onBack, onPair, onEditDevice, onEditLocation, onRevoke, onReactivate }:
-  { branch: Branch; devices: Device[]; busy: number | null; onBack: () => void; onPair: () => void; onEditDevice: (d: Device) => void; onEditLocation: () => void; onRevoke: (id: number) => void; onReactivate: (id: number) => void }) {
+// Haftalık günler — getDay() sırasıyla (Paz=0..Cmt=6), ama UI Pzt başlangıçlı gösterilir
+const WD_ORDER = [1, 2, 3, 4, 5, 6, 0]
+const WD_LABEL: Record<number, string> = { 1: 'Pzt', 2: 'Sal', 3: 'Çar', 4: 'Per', 5: 'Cum', 6: 'Cmt', 0: 'Paz' }
+
+function BranchDetailPage({ branch, devices, busy, onBack, onReload, onPair, onEditDevice, onEditLocation, onRevoke, onReactivate }:
+  { branch: Branch; devices: Device[]; busy: number | null; onBack: () => void; onReload: () => void; onPair: () => void; onEditDevice: (d: Device) => void; onEditLocation: () => void; onRevoke: (id: number) => void; onReactivate: (id: number) => void }) {
   const locSet = branch.lat != null && branch.lng != null
   const [holidays, setHolidays] = useState<Holi[]>([])
+  const [tatilOpen, setTatilOpen] = useState(false)
+  const [wd, setWd] = useState<number[]>(branch.workingDays ?? [1, 2, 3, 4, 5, 6])
+  const [wdSaving, setWdSaving] = useState(false)
   useEffect(() => { api.holidays().then((h: any) => setHolidays(h)).catch(() => {}) }, [])
+  useEffect(() => { setWd(branch.workingDays ?? [1, 2, 3, 4, 5, 6]) }, [branch.id])
   const today = new Date().toISOString().slice(0, 10)
   const upcoming = holidays.filter(h => h.date >= today)
+  const wdDirty = JSON.stringify([...wd].sort((a, b) => a - b)) !== JSON.stringify([...(branch.workingDays ?? [1, 2, 3, 4, 5, 6])].sort((a, b) => a - b))
+  const toggleWd = (n: number) => setWd(p => p.includes(n) ? p.filter(x => x !== n) : [...p, n])
+  const saveWd = async () => {
+    setWdSaving(true)
+    try { await api.updateBranch(branch.id, { workingDays: wd }); onReload() }
+    catch (e: any) { alert(e.message) } finally { setWdSaving(false) }
+  }
 
   return (
     <div>
@@ -178,27 +193,53 @@ function BranchDetailPage({ branch, devices, busy, onBack, onPair, onEditDevice,
         })}</div>}
       </div>
 
-      {/* Tatiller — bu şube */}
+      {/* Çalışma günleri — bu şube */}
+      <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+        <div className="rowx between" style={{ marginBottom: 12, alignItems: 'flex-start' }}>
+          <div><span className="t-bodys" style={{ fontSize: 15 }}>Haftalık çalışma günleri</span><span className="t-cap ink-3"> · işaretli günler açık</span></div>
+          {wdDirty && <button className="btn btn-primary" disabled={wdSaving} onClick={saveWd} style={{ height: 32, padding: '0 14px', fontSize: 13, opacity: wdSaving ? 0.6 : 1 }}>{wdSaving ? 'Kaydediliyor…' : 'Kaydet'}</button>}
+        </div>
+        <div className="rowx gap8" style={{ flexWrap: 'wrap' }}>
+          {WD_ORDER.map(n => {
+            const on = wd.includes(n)
+            return (
+              <button key={n} onClick={() => toggleWd(n)} className="btn" style={{ height: 40, minWidth: 56, padding: '0 14px', borderRadius: 'var(--r-sm)', fontSize: 13.5, fontWeight: 600, border: `1px solid ${on ? 'var(--brand-600)' : 'var(--border)'}`, background: on ? 'var(--brand-50)' : 'transparent', color: on ? 'var(--brand-700)' : 'var(--ink-3)' }}>{WD_LABEL[n]}</button>
+            )
+          })}
+        </div>
+        <div className="t-cap ink-3" style={{ paddingTop: 10, lineHeight: 1.5 }}>Kapalı günler puantaj çizelgesinde soluk görünür (hafta sonu gibi). Örn. Cumartesi çalışıyorsanız Cmt'yi açık bırakın; AVM şubeleri Paz'ı da açabilir.</div>
+      </div>
+
+      {/* Tatiller — bu şube (katlanır, varsayılan kapalı) */}
       <div className="card" style={{ padding: 16 }}>
-        <div className="rowx between" style={{ marginBottom: 12 }}>
-          <div><span className="t-bodys" style={{ fontSize: 15 }}>Tatiller</span><span className="t-cap ink-3"> · bu şubenin durumu</span></div>
+        <div className="rowx between" style={{ alignItems: 'center' }}>
+          <button onClick={() => setTatilOpen(o => !o)} className="rowx gap10" style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, alignItems: 'center', flex: 1, textAlign: 'left' }}>
+            <Icon name={tatilOpen ? 'chevronDown' : 'chevron'} size={17} color="var(--ink-3)" />
+            <span className="t-bodys" style={{ fontSize: 15 }}>Tatiller</span>
+            <span className="t-cap ink-3">· bu şubenin durumu</span>
+            {upcoming.length > 0 && <StatusChip status="neu">{upcoming.length}</StatusChip>}
+          </button>
           <button className="btn btn-ghost" onClick={() => goto('holidays')} style={{ height: 32, padding: '0 10px', fontSize: 13 }}>Tümünü yönet ›</button>
         </div>
-        {upcoming.length === 0 ? (
-          <div className="t-sm ink-3" style={{ padding: 8 }}>Yaklaşan tatil yok. Tatiller sayfasından ekleyebilirsiniz.</div>
-        ) : <div className="col" style={{ gap: 6 }}>{upcoming.map(h => {
-          const working = h.workingBranchIds.includes(branch.id)
-          return (
-            <div key={h.id} className="rowx between" style={{ padding: '10px 12px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', gap: 10 }}>
-              <div className="rowx gap10" style={{ minWidth: 0, alignItems: 'center' }}>
-                <span className="t-sm mono ink-2" style={{ width: 78, flex: 'none' }}>{fmtDate(h.date)}</span>
-                <span className="t-sm" style={{ minWidth: 0 }}>{h.name}</span>
-                <StatusChip status={h.type === 'resmi' ? 'brand' : 'neu'}>{h.type === 'resmi' ? 'Resmi' : h.type === 'dini' ? 'Dini' : 'Diğer'}</StatusChip>
-              </div>
-              <StatusChip status={working ? 'warn' : 'ok'}>{working ? 'Çalışılıyor' : 'Kapalı'}</StatusChip>
-            </div>
-          )
-        })}</div>}
+        {tatilOpen && (
+          <div style={{ marginTop: 12 }}>
+            {upcoming.length === 0 ? (
+              <div className="t-sm ink-3" style={{ padding: 8 }}>Yaklaşan tatil yok. Tatiller sayfasından ekleyebilirsiniz.</div>
+            ) : <div className="col" style={{ gap: 6 }}>{upcoming.map(h => {
+              const working = h.workingBranchIds.includes(branch.id)
+              return (
+                <div key={h.id} className="rowx between" style={{ padding: '10px 12px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', gap: 10 }}>
+                  <div className="rowx gap10" style={{ minWidth: 0, alignItems: 'center' }}>
+                    <span className="t-sm mono ink-2" style={{ width: 78, flex: 'none' }}>{fmtDate(h.date)}</span>
+                    <span className="t-sm" style={{ minWidth: 0 }}>{h.name}</span>
+                    <StatusChip status={h.type === 'resmi' ? 'brand' : 'neu'}>{h.type === 'resmi' ? 'Resmi' : h.type === 'dini' ? 'Dini' : 'Diğer'}</StatusChip>
+                  </div>
+                  <StatusChip status={working ? 'warn' : 'ok'}>{working ? 'Çalışılıyor' : 'Kapalı'}</StatusChip>
+                </div>
+              )
+            })}</div>}
+          </div>
+        )}
       </div>
     </div>
   )
