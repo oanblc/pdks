@@ -269,7 +269,7 @@ function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
     setErr(null)
     if (!name.trim()) return setErr('Ad-Soyad zorunludur')
     if (!/^\d{11}$/.test(tc)) return setErr('TC kimlik no 11 haneli olmalıdır')
-    if (!password.trim()) return setErr('Şifre zorunludur')
+    if (password.length < 8) return setErr('Şifre en az 8 karakter olmalı')
     setSaving(true)
     try {
       await api.createEmployee({

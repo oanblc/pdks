@@ -61,7 +61,7 @@ export function Register({ onSubmitted, onBack }: { onSubmitted: () => void; onB
   useEffect(() => { api.branches().then(setBranches).catch(() => {}); }, []);
 
   const mismatch = pw2.length > 0 && pw !== pw2;
-  const canSubmit = !!(ad.trim() && soyad.trim() && tc.length === 11 && phone.length >= 10 && branch && adres.trim() && pw.length >= 4 && pw === pw2) && !busy;
+  const canSubmit = !!(ad.trim() && soyad.trim() && tc.length === 11 && phone.length >= 10 && branch && adres.trim() && pw.length >= 8 && pw === pw2) && !busy;
 
   const submit = async () => {
     if (!isValidTC(tc)) { setError('Geçersiz TC kimlik numarası.'); return; }
@@ -101,7 +101,7 @@ export function Register({ onSubmitted, onBack }: { onSubmitted: () => void; onB
 
           <View><FieldLabel>Adres</FieldLabel><TextArea placeholder="Açık adresiniz" value={adres} onChangeText={setAdres} /></View>
 
-          <TextField label="Şifre" value={pw} onChangeText={setPw} placeholder="En az 4 karakter" secure={!show} rightSlot={ShowBtn} />
+          <TextField label="Şifre" value={pw} onChangeText={setPw} placeholder="En az 8 karakter" secure={!show} rightSlot={ShowBtn} />
           <View>
             <TextField label="Şifre (tekrar)" value={pw2} onChangeText={setPw2} placeholder="Şifrenizi tekrar girin" secure={!show} />
             {mismatch && <T v="cap" color={C.errInk} style={{ marginTop: 6 }}>Şifreler eşleşmiyor.</T>}

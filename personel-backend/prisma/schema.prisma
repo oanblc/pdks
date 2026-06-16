@@ -124,6 +124,9 @@ model Punch {
   status     String   @default("ok")  // ok | review | confirmed (müdür onayladı)
   source     String   @default("qr")  // qr | manual
   createdAt  DateTime @default(now())
+
+  @@index([employeeId, serverTime]) // puantaj sorguları (çalışan + dönem)
+  @@index([branchId, serverTime])   // şube/gün raporları
 }
 
 model Request {
@@ -142,6 +145,9 @@ model Request {
   managerNote      String?
   managerDecidedAt DateTime?
   createdAt        DateTime  @default(now())
+
+  @@index([employeeId, status]) // çalışanın talepleri / bekleyenler
+  @@index([branchId, status])   // şubeye düşen bekleyen talepler
 }
 
 model AuditLog {
@@ -151,6 +157,8 @@ model AuditLog {
   action    String
   detail    String?
   createdAt DateTime @default(now())
+
+  @@index([createdAt]) // son denetim kayıtları (sıralı)
 }
 
 model Setting {

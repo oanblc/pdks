@@ -144,8 +144,8 @@ function ChangePasswordSheet({ onClose }: { onClose: () => void }) {
 
   const submit = async () => {
     setErr(null);
-    if (current.length < 4) { setErr('Mevcut şifrenizi girin.'); return; }
-    if (next.length < 4) { setErr('Yeni şifre en az 4 karakter olmalı.'); return; }
+    if (current.length < 1) { setErr('Mevcut şifrenizi girin.'); return; }
+    if (next.length < 8) { setErr('Yeni şifre en az 8 karakter olmalı.'); return; }
     if (next !== confirm) { setErr('Yeni şifreler eşleşmiyor.'); return; }
     setBusy(true);
     try {
@@ -186,10 +186,10 @@ function ChangePasswordSheet({ onClose }: { onClose: () => void }) {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }} keyboardShouldPersistTaps="handled">
-        <T v="body" color={C.ink2}>Hesabınızı güvende tutmak için güçlü bir şifre seçin. Yeni şifreniz en az 4 karakter olmalıdır.</T>
+        <T v="body" color={C.ink2}>Hesabınızı güvende tutmak için güçlü bir şifre seçin. Yeni şifreniz en az 8 karakter olmalıdır.</T>
 
         <TextField label="Mevcut şifre" value={current} onChangeText={t => { setCurrent(t); setErr(null); }} placeholder="••••" secure />
-        <TextField label="Yeni şifre" value={next} onChangeText={t => { setNext(t); setErr(null); }} placeholder="En az 4 karakter" secure />
+        <TextField label="Yeni şifre" value={next} onChangeText={t => { setNext(t); setErr(null); }} placeholder="En az 8 karakter" secure />
         <TextField label="Yeni şifre (tekrar)" value={confirm} onChangeText={t => { setConfirm(t); setErr(null); }} placeholder="Tekrar girin" secure />
 
         {err && (

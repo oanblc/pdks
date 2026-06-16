@@ -257,7 +257,7 @@ function AddBranchModal({ onClose, onDone }: { onClose: () => void; onDone: () =
     setErr(null)
     if (!name.trim()) return setErr('Şube adı zorunludur')
     if (!username.trim()) return setErr('Kullanıcı adı zorunludur')
-    if (!password.trim()) return setErr('Şifre zorunludur')
+    if (password.length < 8) return setErr('Şifre en az 8 karakter olmalı')
     setSaving(true)
     try {
       await api.addBranch({ name: name.trim(), city: city.trim() || undefined, username: username.trim(), password })

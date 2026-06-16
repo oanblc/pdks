@@ -103,7 +103,7 @@ app.post('/api/employee/register', { config: { rateLimit: { max: 40, timeWindow:
   const p = z.object({
     tc: z.string().regex(/^\d{11}$/, 'TC 11 haneli olmalı'),
     name: z.string().min(2), phone: z.string().optional(), address: z.string().optional(),
-    branchId: z.number().int().optional(), password: z.string().min(4),
+    branchId: z.number().int().optional(), password: z.string().min(8, 'Şifre en az 8 karakter olmalı'),
   }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   if (!isValidTC(p.data.tc)) return bad(reply, 'Geçersiz TC kimlik numarası');
@@ -168,7 +168,7 @@ app.get('/api/me', { preHandler: requireEmployee }, async (req: any) => {
   return { employee: publicEmployee(emp), today: statusFromPunches(punches), lateToleranceMin: cfg.lateToleranceMin, branchGeo, kioskCode, shiftStartAt, shiftEndAt };
 });
 
-app.post('/api/punch', { preHandler: requireEmployee }, async (req: any, reply) => {
+app.post('/api/punch', { preHandler: requireEmployee, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req: any, reply) => {
   const p = z.object({
     branchId: z.number().int(),
     action: z.enum(['enter', 'exit', 'break-out', 'break-in']),
@@ -224,7 +224,7 @@ function isRealDate(s: string): boolean {
   const dt = new Date(y, m - 1, d);
   return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
-app.post('/api/requests', { preHandler: requireEmployee }, async (req: any, reply) => {
+app.post('/api/requests', { preHandler: requireEmployee, config: { rateLimit: { max: 12, timeWindow: '1 minute' } } }, async (req: any, reply) => {
   const p = z.object({
     kind: z.enum(['leave', 'fix']), type: z.string(), detail: z.string().optional(),
     leaveStart: z.string().regex(DATEKEY).optional(), leaveEnd: z.string().regex(DATEKEY).optional(),
@@ -681,7 +681,7 @@ app.post('/api/branch/verify-pin', { preHandler: requireBranch, config: { rateLi
   return { ok };
 });
 
-app.post('/api/branch/manual-punch', { preHandler: requireBranch }, async (req: any, reply) => {
+app.post('/api/branch/manual-punch', { preHandler: requireBranch, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req: any, reply) => {
   const p = z.object({ employeeId: z.number().int(), action: z.enum(['enter', 'exit', 'break-out', 'break-in']), reason: z.string().min(1) }).safeParse(req.body);
   if (!p.success) return bad(reply, 'Eksik bilgi');
   const emp = await prisma.employee.findUnique({ where: { id: p.data.employeeId } });
@@ -699,7 +699,7 @@ async function assertFk(reply: any, branchId?: number | null, shiftId?: number |
   return true;
 }
 app.post('/api/employees', { preHandler: requireAdmin }, async (req: any, reply) => {
-  const p = z.object({ name: z.string().min(2), tc: z.string().regex(/^\d{11}$/), dept: z.string().optional(), role: z.string().optional(), branchId: z.number().int().optional(), shiftId: z.number().int().optional(), password: z.string().min(4) }).safeParse(req.body);
+  const p = z.object({ name: z.string().min(2), tc: z.string().regex(/^\d{11}$/), dept: z.string().optional(), role: z.string().optional(), branchId: z.number().int().optional(), shiftId: z.number().int().optional(), password: z.string().min(8, 'Şifre en az 8 karakter olmalı') }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   if (!(await assertFk(reply, p.data.branchId, p.data.shiftId))) return;
   if (await prisma.employee.findUnique({ where: { tc: p.data.tc } })) return bad(reply, 'Bu TC ile kayıt zaten var');
@@ -762,8 +762,8 @@ app.post('/api/employees/:id/reactivate', { preHandler: requireAdmin }, async (r
 });
 
 app.post('/api/employee/change-password', { preHandler: requireEmployee }, async (req: any, reply) => {
-  const p = z.object({ current: z.string().min(1), next: z.string().min(4) }).safeParse(req.body);
-  if (!p.success) return bad(reply, 'En az 4 karakterli yeni şifre gerekli');
+  const p = z.object({ current: z.string().min(1), next: z.string().min(8) }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Yeni şifre en az 8 karakter olmalı');
   const emp = await prisma.employee.findUnique({ where: { id: req.user.sub } });
   if (!emp || !(await bcrypt.compare(p.data.current, emp.passwordHash))) return reply.code(401).send({ error: 'Mevcut şifre hatalı' });
   await prisma.employee.update({ where: { id: emp.id }, data: { passwordHash: await bcrypt.hash(p.data.next, 10) } });
@@ -780,7 +780,7 @@ app.post('/api/employee/forgot', { config: { rateLimit: { max: 5, timeWindow: '1
 
 /* ───────── ŞUBE / CİHAZ / VARDİYA YÖNETİMİ (admin) ───────── */
 app.post('/api/branches', { preHandler: requireAdmin }, async (req: any, reply) => {
-  const p = z.object({ name: z.string().min(2), city: z.string().optional(), username: z.string().min(3), password: z.string().min(4), managerPin: z.string().regex(/^\d{4,8}$/).optional() }).safeParse(req.body);
+  const p = z.object({ name: z.string().min(2), city: z.string().optional(), username: z.string().min(3), password: z.string().min(8, 'Şifre en az 8 karakter olmalı'), managerPin: z.string().regex(/^\d{4,8}$/).optional() }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   if (await prisma.branch.findUnique({ where: { username: p.data.username } })) return bad(reply, 'Bu kullanıcı adı kullanılıyor');
   const br = await prisma.branch.create({ data: { name: p.data.name, city: p.data.city, username: p.data.username, passwordHash: await bcrypt.hash(p.data.password, 10), managerPin: await bcrypt.hash(p.data.managerPin || '1234', 10) } });
@@ -1296,6 +1296,12 @@ app.post('/api/admin/notifications/seen', { preHandler: requireAdmin }, async (r
   await prisma.setting.upsert({ where: { key: notifSeenKey(req.user.sub) }, create: { key: notifSeenKey(req.user.sub), value: JSON.stringify({ at }) }, update: { value: JSON.stringify({ at }) } });
   return { ok: true, at };
 });
+
+// SQLite WAL modu: eşzamanlı okuma/yazma + güvenli sıcak yedek (cp/.backup tutarlı kalır)
+// PRAGMA bir satır döndürdüğü için queryRaw kullanılır (executeRaw SQLite'ta sonuç döndüremez)
+prisma.$queryRawUnsafe('PRAGMA journal_mode=WAL;')
+  .then((r: any) => app.log.info(`SQLite journal_mode=${r?.[0]?.journal_mode ?? '?'}`))
+  .catch((e) => app.log.warn(`WAL ayarlanamadı: ${e?.message ?? e}`));
 
 app.listen({ port: PORT, host: '0.0.0.0' })
   .then(() => app.log.info(`API http://localhost:${PORT} (LAN: http://192.168.1.106:${PORT})`))
