@@ -4,7 +4,7 @@ import { Icon } from '../icons'
 import { api } from '../api'
 import { PageHead, SearchInput, Table, Row, Avatar, StatusChip, type Tone } from '../ui'
 
-type Req = { id: number; name: string; branch?: string | null; kind: string; type: string; detail?: string; leaveStart?: string | null; leaveEnd?: string | null; status: string; stage: string; escalated?: boolean; managerRec?: string | null; managerNote?: string | null; createdAt: string }
+type Req = { id: number; name: string; branch?: string | null; kind: string; type: string; detail?: string; leaveStart?: string | null; leaveEnd?: string | null; leave?: { entitlement: number; used: number; pending: number; remaining: number } | null; status: string; stage: string; escalated?: boolean; managerRec?: string | null; managerNote?: string | null; createdAt: string }
 const fmtDate = (s: string) => { const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : s }
 const stMap: Record<string, [Tone, string]> = { pending: ['warn', 'Bekliyor'], approved: ['ok', 'Onaylandı'], rejected: ['err', 'Reddedildi'] }
 
@@ -83,6 +83,7 @@ export function Approvals() {
                     { flex: 2, node: <div style={{ minWidth: 0 }}>
                       {r.kind === 'leave' && r.leaveStart && r.leaveEnd && <div className="t-sm" style={{ fontWeight: 600 }}>{r.leaveStart === r.leaveEnd ? fmtDate(r.leaveStart) : `${fmtDate(r.leaveStart)} – ${fmtDate(r.leaveEnd)}`}</div>}
                       <div className="t-sm ink-2">{r.detail || '—'}</div>
+                      {r.leave && <div className="rowx gap6" style={{ marginTop: 3, alignItems: 'center' }}><span className="t-cap ink-3">Yıllık izin bakiyesi:</span><StatusChip status={r.leave.remaining > 0 ? 'ok' : 'err'}>{r.leave.remaining}/{r.leave.entitlement} gün kaldı</StatusChip>{r.leave.pending > 0 && <span className="t-cap ink-3">({r.leave.pending} gün bekleyen dahil)</span>}</div>}
                       {r.managerRec && <div className="t-cap" style={{ marginTop: 2, color: r.managerRec === 'approve' ? 'var(--ok-ink)' : 'var(--err-ink)' }}>Müdür: {r.managerRec === 'approve' ? 'uygundur' : 'uygun değil'}{r.managerNote ? ` · ${r.managerNote}` : ''}</div>}
                     </div> },
                     { w: 150, node: <StatusChip status={stageChip[0]}>{stageChip[1]}</StatusChip> },

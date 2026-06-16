@@ -69,11 +69,11 @@ export const api = {
   adminNotifications: () => req('/api/admin/notifications') as Promise<{ items: NotifItem[]; unreadCount: number; lastSeen: string }>,
   markNotificationsSeen: () => req('/api/admin/notifications/seen', { method: 'POST' }),
   kvkk: () => req('/api/kvkk'),
-  createEmployee: (body: { name: string; tc: string; dept?: string; role?: string; branchId?: number; password: string }) =>
+  createEmployee: (body: { name: string; tc: string; dept?: string; role?: string; branchId?: number; annualLeaveDays?: number; password: string }) =>
     req('/api/employees', { method: 'POST', body: JSON.stringify(body) }),
   offboardEmployee: (id: number, body: { exitDate: string; reason?: string }) => req(`/api/employees/${id}/offboard`, { method: 'POST', body: JSON.stringify(body) }),
   reactivateEmployee: (id: number) => req(`/api/employees/${id}/reactivate`, { method: 'POST' }),
-  updateEmployee: (id: number, body: { name?: string; dept?: string | null; role?: string | null; branchId?: number | null; shiftId?: number | null; isManager?: boolean }) =>
+  updateEmployee: (id: number, body: { name?: string; dept?: string | null; role?: string | null; branchId?: number | null; shiftId?: number | null; isManager?: boolean; annualLeaveDays?: number }) =>
     req(`/api/employees/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   devices: () => req('/api/devices'),
   addBranch: (body: { name: string; city?: string; username: string; password: string; managerPin?: string }) =>

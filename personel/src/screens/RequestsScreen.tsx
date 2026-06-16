@@ -84,6 +84,9 @@ function NewRequestWizard({ onClose }: { onClose: () => void }) {
   const [leaveKind, setLeaveKind] = useState('Yıllık izin');
   const [missing, setMissing] = useState('Çıkış');
   const [busy, setBusy] = useState(false);
+  // Yıllık izin bakiyesi (görünürlük) — talep verirken kalanı göster
+  const [leaveBal, setLeaveBal] = useState<{ entitlement: number; used: number; pending: number; remaining: number } | null>(null);
+  useEffect(() => { api.me().then(r => setLeaveBal(r.leave)).catch(() => {}); }, []);
   // leave fields
   const [start, setStart] = useState('18.06.2026');
   const [end, setEnd] = useState('20.06.2026');
@@ -163,6 +166,15 @@ function NewRequestWizard({ onClose }: { onClose: () => void }) {
                       {['Yıllık izin', 'Mazeret', 'Hastalık'].map(k => <Pill key={k} active={leaveKind === k} label={k} onPress={() => setLeaveKind(k)} />)}
                     </View>
                   </View>
+                  {leaveKind === 'Yıllık izin' && leaveBal && (
+                    <View style={[S.card, { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.brand50, borderColor: C.brand50 }]}>
+                      <Icon name="calendar" size={20} color={C.brand700} />
+                      <View style={{ flex: 1 }}>
+                        <T v="bodyS" color={C.brand700}>Yıllık izin bakiyeniz: {leaveBal.remaining} / {leaveBal.entitlement} gün</T>
+                        <T v="cap" color={C.ink3} style={{ marginTop: 2 }}>{leaveBal.used} gün kullanıldı{leaveBal.pending > 0 ? ` · ${leaveBal.pending} gün onay bekliyor` : ''}</T>
+                      </View>
+                    </View>
+                  )}
                   <View style={{ flexDirection: 'row', gap: 12 }}>
                     <View style={{ flex: 1 }}><TextField label="Başlangıç" value={start} onChangeText={setStart} placeholder="GG.AA.YYYY" mono /></View>
                     <View style={{ flex: 1 }}><TextField label="Bitiş" value={end} onChangeText={setEnd} placeholder="GG.AA.YYYY" mono /></View>

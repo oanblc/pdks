@@ -132,7 +132,33 @@ app.post('/api/employee/login', { config: { rateLimit: { max: 60, timeWindow: '1
 });
 
 function publicEmployee(e: any) {
-  return { id: e.id, tc: e.tc, name: e.name, phone: e.phone, dept: e.dept, role: e.role, sicil: e.sicil, status: e.status, isManager: e.isManager ?? false, branch: e.branch?.name ?? null, branchId: e.branchId, shiftId: e.shiftId, shift: e.shift ? `${e.shift.start} – ${e.shift.end}` : null, shiftStart: e.shift?.start ?? null, shiftEnd: e.shift?.end ?? null, breakMin: e.shift?.breakMin ?? null, overnight: e.shift?.overnight ?? false, startDate: e.startDate, exitDate: e.exitDate, exitReason: e.exitReason };
+  return { id: e.id, tc: e.tc, name: e.name, phone: e.phone, dept: e.dept, role: e.role, sicil: e.sicil, status: e.status, isManager: e.isManager ?? false, annualLeaveDays: e.annualLeaveDays ?? 14, branch: e.branch?.name ?? null, branchId: e.branchId, shiftId: e.shiftId, shift: e.shift ? `${e.shift.start} – ${e.shift.end}` : null, shiftStart: e.shift?.start ?? null, shiftEnd: e.shift?.end ?? null, breakMin: e.shift?.breakMin ?? null, overnight: e.shift?.overnight ?? false, startDate: e.startDate, exitDate: e.exitDate, exitReason: e.exitReason };
+}
+
+// ── Yıllık izin bakiyesi ── (sadece "Yıllık izin" tipi düşer; mazeret/hastalık ayrı)
+// Gün sayımı: leaveStart..leaveEnd takvim günü (dahil), içinde bulunulan yıla kırpılır.
+function leaveDaysInYear(start: string, end: string, year: number): number {
+  const ys = `${year}-01-01`, ye = `${year}-12-31`;
+  const s = start < ys ? ys : start, e = end > ye ? ye : end;
+  if (s > e) return 0;
+  return Math.round((+new Date(e + 'T00:00:00') - +new Date(s + 'T00:00:00')) / 86400000) + 1;
+}
+async function annualLeaveBalances(year: number): Promise<Map<number, { used: number; pending: number }>> {
+  const reqs = await prisma.request.findMany({ where: { kind: 'leave', type: 'Yıllık izin', status: { in: ['approved', 'pending'] } } });
+  const m = new Map<number, { used: number; pending: number }>();
+  for (const r of reqs) {
+    if (!r.leaveStart || !r.leaveEnd) continue;
+    const d = leaveDaysInYear(r.leaveStart, r.leaveEnd, year);
+    if (d <= 0) continue;
+    const cur = m.get(r.employeeId) ?? { used: 0, pending: 0 };
+    if (r.status === 'approved') cur.used += d; else cur.pending += d;
+    m.set(r.employeeId, cur);
+  }
+  return m;
+}
+function leaveBalanceOf(map: Map<number, { used: number; pending: number }>, empId: number, entitlement: number) {
+  const b = map.get(empId) ?? { used: 0, pending: 0 };
+  return { entitlement, used: b.used, pending: b.pending, remaining: entitlement - b.used };
 }
 
 // Çakışmayan sicil üret: mevcut en yüksek sayısal sicilin bir fazlası (taban 10400).
@@ -165,7 +191,9 @@ app.get('/api/me', { preHandler: requireEmployee }, async (req: any) => {
   const kioskCode = emp?.isManager && emp?.branchId ? dailyKioskCode(emp.branchId, dKey(new Date())) : null;
   // Vardiya baş/bitiş mutlak zamanları (İstanbul, gece vardiyası bilinçli) — hatırlatmalar istemcide TZ hesabı yapmasın
   const { startAt: shiftStartAt, endAt: shiftEndAt } = shiftInstants((emp as any)?.shift);
-  return { employee: publicEmployee(emp), today: statusFromPunches(punches), lateToleranceMin: cfg.lateToleranceMin, branchGeo, kioskCode, shiftStartAt, shiftEndAt };
+  const balances = await annualLeaveBalances(new Date().getFullYear());
+  const leave = leaveBalanceOf(balances, req.user.sub, (emp as any)?.annualLeaveDays ?? 14);
+  return { employee: publicEmployee(emp), today: statusFromPunches(punches), lateToleranceMin: cfg.lateToleranceMin, branchGeo, kioskCode, shiftStartAt, shiftEndAt, leave };
 });
 
 app.post('/api/punch', { preHandler: requireEmployee, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req: any, reply) => {
@@ -376,7 +404,8 @@ app.get('/api/employees', { preHandler: requireAdmin }, async () => {
     select: { employeeId: true },
   });
   const leaveSet = new Set(onLeave.map(r => r.employeeId));
-  return emps.map(e => ({ ...publicEmployee(e), onLeaveToday: leaveSet.has(e.id) }));
+  const balances = await annualLeaveBalances(new Date().getFullYear());
+  return emps.map(e => ({ ...publicEmployee(e), onLeaveToday: leaveSet.has(e.id), leave: leaveBalanceOf(balances, e.id, e.annualLeaveDays ?? 14) }));
 });
 
 app.post('/api/employees/:id/approve', { preHandler: requireAdmin }, async (req: any, reply) => {
@@ -403,12 +432,16 @@ app.get('/api/punches/today', { preHandler: requireAdmin }, async () => {
 
 app.get('/api/requests', { preHandler: requireAdmin }, async () => {
   const reqs = await prisma.request.findMany({ include: { employee: { include: { branch: true } } }, orderBy: { createdAt: 'desc' } });
+  const balances = await annualLeaveBalances(new Date().getFullYear());
   return reqs.map(r => {
     const eff = effectiveStage(r);
     const escalated = r.stage === 'manager' && eff === 'admin' && r.branchId != null;
+    // Yıllık izin taleplerinde, onaylayanın kararına yardımcı olmak için çalışanın bakiyesi
+    const leave = r.kind === 'leave' && r.type === 'Yıllık izin'
+      ? leaveBalanceOf(balances, r.employeeId, r.employee.annualLeaveDays ?? 14) : null;
     return {
       id: r.id, name: r.employee.name, branch: r.employee.branch?.name ?? null, kind: r.kind, type: r.type, detail: r.detail,
-      leaveStart: r.leaveStart, leaveEnd: r.leaveEnd,
+      leaveStart: r.leaveStart, leaveEnd: r.leaveEnd, leave,
       status: r.status, stage: eff, escalated, managerRec: r.managerRec, managerNote: r.managerNote, createdAt: r.createdAt,
     };
   });
@@ -730,11 +763,11 @@ async function assertFk(reply: any, branchId?: number | null, shiftId?: number |
   return true;
 }
 app.post('/api/employees', { preHandler: requireAdmin }, async (req: any, reply) => {
-  const p = z.object({ name: z.string().min(2), tc: z.string().regex(/^\d{11}$/), dept: z.string().optional(), role: z.string().optional(), branchId: z.number().int().optional(), shiftId: z.number().int().optional(), password: z.string().min(8, 'Şifre en az 8 karakter olmalı') }).safeParse(req.body);
+  const p = z.object({ name: z.string().min(2), tc: z.string().regex(/^\d{11}$/), dept: z.string().optional(), role: z.string().optional(), branchId: z.number().int().optional(), shiftId: z.number().int().optional(), annualLeaveDays: z.number().int().min(0).max(60).optional(), password: z.string().min(8, 'Şifre en az 8 karakter olmalı') }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   if (!(await assertFk(reply, p.data.branchId, p.data.shiftId))) return;
   if (await prisma.employee.findUnique({ where: { tc: p.data.tc } })) return bad(reply, 'Bu TC ile kayıt zaten var');
-  const emp = await prisma.employee.create({ data: { name: p.data.name, tc: p.data.tc, dept: p.data.dept, role: p.data.role, branchId: p.data.branchId ?? null, shiftId: p.data.shiftId ?? null, passwordHash: await bcrypt.hash(p.data.password, 10), status: 'active', sicil: await nextSicil() } });
+  const emp = await prisma.employee.create({ data: { name: p.data.name, tc: p.data.tc, dept: p.data.dept, role: p.data.role, branchId: p.data.branchId ?? null, shiftId: p.data.shiftId ?? null, annualLeaveDays: p.data.annualLeaveDays ?? 14, passwordHash: await bcrypt.hash(p.data.password, 10), status: 'active', sicil: await nextSicil() } });
   await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Çalışan eklendi', detail: emp.name } });
   return publicEmployee(emp);
 });
@@ -750,11 +783,12 @@ app.patch('/api/employees/:id', { preHandler: requireAdmin }, async (req: any, r
     branchId: z.number().int().nullable().optional(),
     shiftId: z.number().int().nullable().optional(),
     isManager: z.boolean().optional(),
+    annualLeaveDays: z.number().int().min(0).max(60).optional(),
   }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   if (!(await assertFk(reply, p.data.branchId, p.data.shiftId))) return;
   const data: any = {};
-  for (const k of ['name', 'dept', 'role', 'branchId', 'shiftId', 'isManager'] as const) {
+  for (const k of ['name', 'dept', 'role', 'branchId', 'shiftId', 'isManager', 'annualLeaveDays'] as const) {
     if (p.data[k] !== undefined) data[k] = p.data[k];
   }
   const updated = await prisma.employee.update({ where: { id }, data, include: { branch: true } });

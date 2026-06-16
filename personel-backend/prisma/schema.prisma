@@ -71,6 +71,7 @@ model Employee {
   passwordHash String
   status       String          @default("pending") // pending | active | offboarding
   isManager    Boolean         @default(false) // şube yetkilisi — günlük kiosk kodunu görür
+  annualLeaveDays Int          @default(14) // yıllık izin hakkı (gün) — İş Kanunu kıdeme göre admin ayarlar
   startDate    DateTime?
   exitDate     DateTime?
   exitReason   String?

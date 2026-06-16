@@ -4,7 +4,8 @@ import { Icon } from '../icons'
 import { api } from '../api'
 import { PageHead, SearchInput, Table, Row, Avatar, StatusChip, Modal, Field, type Tone } from '../ui'
 
-type Emp = { id: number; name: string; branch: string | null; branchId: number | null; shiftId: number | null; dept: string | null; role: string | null; status: string; sicil: string | null; exitDate: string | null; exitReason: string | null; onLeaveToday?: boolean; isManager?: boolean }
+type LeaveBalance = { entitlement: number; used: number; pending: number; remaining: number }
+type Emp = { id: number; name: string; branch: string | null; branchId: number | null; shiftId: number | null; dept: string | null; role: string | null; status: string; sicil: string | null; exitDate: string | null; exitReason: string | null; onLeaveToday?: boolean; isManager?: boolean; annualLeaveDays?: number; leave?: LeaveBalance }
 type Branch = { id: number; name: string }
 type Shift = { id: number; name: string; start: string; end: string }
 
@@ -81,7 +82,7 @@ export function Employees() {
               { flex: 2.4, node: (
                 <div className="rowx gap12">
                   <Avatar name={e.name} size={38} />
-                  <div style={{ minWidth: 0 }}><div className="rowx gap6" style={{ alignItems: 'center' }}><span className="t-bodys" style={{ fontSize: 15, whiteSpace: 'nowrap' }}>{e.name}</span>{e.isManager && <StatusChip status="brand">Yetkili</StatusChip>}</div><div className="t-cap ink-3 mono" style={{ whiteSpace: 'nowrap' }}>SİCİL {e.sicil || '—'}</div></div>
+                  <div style={{ minWidth: 0 }}><div className="rowx gap6" style={{ alignItems: 'center' }}><span className="t-bodys" style={{ fontSize: 15, whiteSpace: 'nowrap' }}>{e.name}</span>{e.isManager && <StatusChip status="brand">Yetkili</StatusChip>}</div><div className="t-cap ink-3 mono" style={{ whiteSpace: 'nowrap' }}>SİCİL {e.sicil || '—'}{e.status === 'active' && e.leave ? ` · İZİN ${e.leave.remaining}/${e.leave.entitlement} GÜN` : ''}</div></div>
                 </div>) },
               { flex: 1.4, node: <span className="t-body ink-2">{e.branch || '—'}</span> },
               { flex: 1.2, node: <span className="t-body ink-2">{e.dept || '—'}</span> },
@@ -113,6 +114,7 @@ function EmployeeModal({ emp, onClose, onDone, onApprove }: { emp: Emp; onClose:
   const [branchId, setBranchId] = useState(emp.branchId ? String(emp.branchId) : '')
   const [shiftId, setShiftId] = useState(emp.shiftId ? String(emp.shiftId) : '')
   const [isManager, setIsManager] = useState(!!emp.isManager)
+  const [leaveDays, setLeaveDays] = useState(String(emp.annualLeaveDays ?? 14))
   const [branchList, setBranchList] = useState<Branch[]>([])
   const [shiftList, setShiftList] = useState<Shift[]>([])
   const [err, setErr] = useState<string | null>(null)
@@ -139,6 +141,7 @@ function EmployeeModal({ emp, onClose, onDone, onApprove }: { emp: Emp; onClose:
         branchId: branchId ? Number(branchId) : null,
         shiftId: shiftId ? Number(shiftId) : null,
         isManager,
+        annualLeaveDays: Math.max(0, Math.min(60, Number(leaveDays) || 0)),
       })
       onDone()
     } catch (e: any) { setErr(e.message); setSaving(false) }
@@ -205,6 +208,19 @@ function EmployeeModal({ emp, onClose, onDone, onApprove }: { emp: Emp; onClose:
         </div>
         <input type="checkbox" checked={isManager} onChange={e => setIsManager(e.target.checked)} style={{ width: 20, height: 20, accentColor: 'var(--brand-600)', flex: 'none' }} />
       </label>
+
+      {/* Yıllık izin hakkı + bakiye */}
+      <div className="rowx gap12" style={{ alignItems: 'flex-end', marginTop: 6 }}>
+        <Field label="YILLIK İZİN HAKKI (GÜN)"><input className="input mono" value={leaveDays} onChange={e => setLeaveDays(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="14" style={{ width: 120 }} /></Field>
+        {emp.leave && (
+          <div className="rowx gap8" style={{ flex: 1, flexWrap: 'wrap', paddingBottom: 4 }}>
+            <span className="rowx gap6" style={{ alignItems: 'center' }}><span className="t-cap ink-3">Kullanılan</span><StatusChip status="neu">{emp.leave.used} gün</StatusChip></span>
+            {emp.leave.pending > 0 && <span className="rowx gap6" style={{ alignItems: 'center' }}><span className="t-cap ink-3">Bekleyen</span><StatusChip status="warn">{emp.leave.pending} gün</StatusChip></span>}
+            <span className="rowx gap6" style={{ alignItems: 'center' }}><span className="t-cap ink-3">Kalan</span><StatusChip status={emp.leave.remaining > 0 ? 'ok' : 'err'}>{emp.leave.remaining} gün</StatusChip></span>
+          </div>
+        )}
+      </div>
+      <div className="t-cap ink-3" style={{ marginTop: 2 }}>Yalnız "Yıllık izin" talepleri bakiyeden düşer; mazeret/hastalık ayrı. Bu yılın ({new Date().getFullYear()}) kullanımı gösterilir.</div>
 
       {emp.status === 'pending' && (
         <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 'var(--r-sm)', background: 'var(--warn-bg)', border: '1px solid var(--warn-ring)' }}>
