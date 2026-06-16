@@ -18,7 +18,7 @@ const rangeLabel = (from: string, to: string) => from === to ? from : `${from} �
 type EmpRow = { id: number; name: string; branch: string | null; dept: string | null; sicil: string | null; present: number; netMin: number; overtimeMin: number; missing: number; flaggedCount: number }
 type Flag = { empId: number; name: string; branch: string; date: string; day: number; status: string; flagged: boolean; netMin: number; diffMin: number; ageDays: number }
 type Data = { month: string; employees: EmpRow[]; flagged: Flag[]; overtimeWeeks: { name: string; week: string; hours: number }[] }
-const stTone: Record<string, [Tone, string]> = { missing: ['warn', 'Eksik basma'], over: ['brand', 'Fazla mesai'], short: ['warn', 'Kısa gün'], full: ['ok', 'Tam gün'], leave: ['neu', 'İzinli'] }
+const stTone: Record<string, [Tone, string]> = { missing: ['warn', 'Eksik basma'], over: ['brand', 'Fazla mesai'], short: ['warn', 'Kısa gün'], full: ['ok', 'Tam gün'], leave: ['neu', 'İzinli'], holiday: ['neu', 'Tatil (kapalı)'], 'holiday-work': ['brand', 'Bayram mesaisi'] }
 
 // "Çözüm süresi" (eski adıyla SLA): bayraklı kayıt kaç gündür açık
 const slaOf = (age: number): [Tone, string] => age <= 1 ? ['neu', '0–1 gün'] : age <= 3 ? ['warn', '2–3 gün'] : ['err', 'Gecikti']

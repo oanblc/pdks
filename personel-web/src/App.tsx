@@ -12,6 +12,7 @@ import { Branches } from './screens/Branches'
 import { Approvals } from './screens/Approvals'
 import { Audit } from './screens/Audit'
 import { Shifts } from './screens/Shifts'
+import { Holidays } from './screens/Holidays'
 import { Timesheet } from './screens/Timesheet'
 import { Anomaly } from './screens/Anomaly'
 import { RiskScore } from './screens/RiskScore'
@@ -30,6 +31,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     { id: 'employees', label: 'Çalışanlar', icon: 'user', roles: ['ik', 'su'] },
     { id: 'branches', label: 'Şube & Tablet', icon: 'building', roles: ['ik', 'su'] },
     { id: 'shifts', label: 'Vardiyalar', icon: 'clock', roles: ['ik', 'su'] },
+    { id: 'holidays', label: 'Tatiller', icon: 'calendar', roles: ['ik', 'su'] },
   ] },
   { group: 'Puantaj', items: [
     { id: 'timesheet', label: 'Puantaj & Mesai', icon: 'calendar', roles: ['ik', 'mu', 'su'] },
@@ -49,7 +51,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
 
 const SCREENS: Record<string, () => React.ReactElement> = {
   dashboard: Dashboard, employees: Employees, branches: Branches, approvals: Approvals, audit: Audit,
-  shifts: Shifts, timesheet: Timesheet, anomaly: Anomaly, risk: RiskScore, risksettings: RiskSettings, kvkk: Kvkk, reports: Reports,
+  shifts: Shifts, holidays: Holidays, timesheet: Timesheet, anomaly: Anomaly, risk: RiskScore, risksettings: RiskSettings, kvkk: Kvkk, reports: Reports,
 }
 
 export function App() {

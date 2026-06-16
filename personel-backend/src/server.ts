@@ -295,6 +295,21 @@ async function isOnApprovedLeave(empId: number, dateKey: string): Promise<boolea
   return !!r;
 }
 
+// Tatil günleri (YYYY-MM-DD → {ad, tür, çalışacak şube id'leri}) — belirli aralıkta
+type HolidayInfo = { name: string; type: string; working: number[] };
+async function holidayDays(startKey?: string, endKey?: string): Promise<Map<string, HolidayInfo>> {
+  const where: any = {};
+  if (startKey || endKey) where.date = { ...(startKey ? { gte: startKey } : {}), ...(endKey ? { lte: endKey } : {}) };
+  const rows = await prisma.holiday.findMany({ where });
+  const m = new Map<string, HolidayInfo>();
+  for (const r of rows) {
+    let working: number[] = [];
+    try { working = JSON.parse(r.workingBranchIds || '[]'); } catch { /* boş */ }
+    m.set(r.date, { name: r.name, type: r.type, working });
+  }
+  return m;
+}
+
 // SLA: müdür bu kadar günde karar vermezse talep admin'e eskale olur
 const REQUEST_SLA_DAYS = 2;
 function effectiveStage(r: { stage: string; createdAt: Date; branchId: number | null }): string {
@@ -526,14 +541,38 @@ async function employeeTimesheet(empId: number, start: Date, end: Date, label: s
   for (const k of leaveSet) if (!have.has(k)) {
     days.push({ date: k, day: Number(k.slice(8)), in: null, out: null, breakMin: 0, netMin: 0, diffMin: 0, status: 'leave', flagged: false, estimated: false, inProgress: false, device: null });
   }
+
+  // ── Tatil/bayram günlerini puantaja işle (izin önceliklidir) ──
+  const holiSet = await holidayDays(startKey, endKeyExcl);
+  const empBranch = emp?.branchId ?? null;
+  const haveNow = new Set(days.map(r => r.date));
+  for (const r of days) {
+    if (r.status === 'leave') continue; // izin önce gelir
+    const h = holiSet.get(r.date);
+    if (!h) continue;
+    const branchWorks = empBranch != null && h.working.includes(empBranch);
+    const worked = !!(r.in || r.out); // o gün okutma var mı
+    if (worked) { r.status = 'holiday-work'; r.holidayName = h.name; r.flagged = false; }
+    else if (!branchWorks) { r.status = 'holiday'; r.holidayName = h.name; r.estimated = false; r.inProgress = false; r.flagged = false; }
+    // şube çalışıyor + okutma yok → normal iş günü (overlay yok)
+  }
+  for (const [k, h] of holiSet) {
+    if (haveNow.has(k) || leaveSet.has(k)) continue;
+    const branchWorks = empBranch != null && h.working.includes(empBranch);
+    if (!branchWorks) { // kapalı tatil, okutma yok → sentetik tatil kaydı
+      days.push({ date: k, day: Number(k.slice(8)), in: null, out: null, breakMin: 0, netMin: 0, diffMin: 0, status: 'holiday', flagged: false, estimated: false, inProgress: false, device: null, holidayName: h.name });
+    }
+  }
   days.sort((a, b) => (a.date < b.date ? -1 : 1));
 
   const netMin = days.reduce((s, r) => s + r.netMin, 0);
   const overtimeMin = days.reduce((s, r) => s + Math.max(0, r.diffMin), 0);
   const missing = days.filter(r => r.status === 'missing' && !r.inProgress).length;
   const leave = days.filter(r => r.status === 'leave').length;
-  const present = days.filter(r => r.status !== 'leave').length;
-  return { employee: emp ? { id: emp.id, name: emp.name, dept: emp.dept, sicil: emp.sicil } : null, range: label, days, summary: { netMin, overtimeMin, present, missing, leave } };
+  const holiday = days.filter(r => r.status === 'holiday').length;
+  const holidayWork = days.filter(r => r.status === 'holiday-work').length;
+  const present = days.filter(r => r.status !== 'leave' && r.status !== 'holiday').length;
+  return { employee: emp ? { id: emp.id, name: emp.name, dept: emp.dept, sicil: emp.sicil } : null, range: label, days, summary: { netMin, overtimeMin, present, missing, leave, holiday, holidayWork } };
 }
 
 // Sorgudan dönem aralığı: ?from=&to= (gün bazlı) veya ?month= (aylık) ya da bu ay
@@ -851,6 +890,103 @@ app.delete('/api/shifts/:id', { preHandler: requireAdmin }, async (req: any, rep
   await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Vardiya silindi', detail: sh.name } });
   return { ok: true };
 });
+
+/* ───────── RESMİ/DİNİ TATİLLER (admin) ───────── */
+// TR resmi (sabit) + dini (kayan) bayram tarihleri. Dini tarihler resmi takvime göre; admin düzenleyebilir.
+const TR_RELIGIOUS: Record<number, { date: string; name: string }[]> = {
+  2026: [
+    { date: '2026-03-20', name: 'Ramazan Bayramı 1. Gün' }, { date: '2026-03-21', name: 'Ramazan Bayramı 2. Gün' }, { date: '2026-03-22', name: 'Ramazan Bayramı 3. Gün' },
+    { date: '2026-05-27', name: 'Kurban Bayramı 1. Gün' }, { date: '2026-05-28', name: 'Kurban Bayramı 2. Gün' }, { date: '2026-05-29', name: 'Kurban Bayramı 3. Gün' }, { date: '2026-05-30', name: 'Kurban Bayramı 4. Gün' },
+  ],
+  2027: [
+    { date: '2027-03-10', name: 'Ramazan Bayramı 1. Gün' }, { date: '2027-03-11', name: 'Ramazan Bayramı 2. Gün' }, { date: '2027-03-12', name: 'Ramazan Bayramı 3. Gün' },
+    { date: '2027-05-16', name: 'Kurban Bayramı 1. Gün' }, { date: '2027-05-17', name: 'Kurban Bayramı 2. Gün' }, { date: '2027-05-18', name: 'Kurban Bayramı 3. Gün' }, { date: '2027-05-19', name: 'Kurban Bayramı 4. Gün' },
+  ],
+};
+function trHolidays(year: number): { date: string; name: string; type: string }[] {
+  const y = year;
+  const official: { date: string; name: string; type: string }[] = [
+    { date: `${y}-01-01`, name: 'Yılbaşı' }, { date: `${y}-04-23`, name: 'Ulusal Egemenlik ve Çocuk Bayramı' },
+    { date: `${y}-05-01`, name: 'Emek ve Dayanışma Günü' }, { date: `${y}-05-19`, name: "Atatürk'ü Anma, Gençlik ve Spor Bayramı" },
+    { date: `${y}-07-15`, name: 'Demokrasi ve Millî Birlik Günü' }, { date: `${y}-08-30`, name: 'Zafer Bayramı' },
+    { date: `${y}-10-29`, name: 'Cumhuriyet Bayramı' },
+  ].map(h => ({ ...h, type: 'resmi' }));
+  const religious = (TR_RELIGIOUS[y] || []).map(h => ({ ...h, type: 'dini' }));
+  return [...official, ...religious];
+}
+async function importHolidaysForYear(year: number): Promise<number> {
+  let added = 0;
+  for (const h of trHolidays(year)) {
+    if (await prisma.holiday.findUnique({ where: { date: h.date } })) continue;
+    await prisma.holiday.create({ data: { date: h.date, name: h.name, type: h.type, workingBranchIds: '[]' } });
+    added++;
+  }
+  return added;
+}
+
+app.get('/api/holidays', { preHandler: requireAdmin }, async () => {
+  const rows = await prisma.holiday.findMany({ orderBy: { date: 'asc' } });
+  const branches = await prisma.branch.findMany({ select: { id: true, name: true } });
+  const bn = new Map(branches.map(b => [b.id, b.name]));
+  return rows.map(r => {
+    let working: number[] = []; try { working = JSON.parse(r.workingBranchIds || '[]'); } catch { /* boş */ }
+    return { id: r.id, date: r.date, name: r.name, type: r.type, workingBranchIds: working, workingBranchNames: working.map(id => bn.get(id)).filter(Boolean) };
+  });
+});
+
+app.post('/api/holidays', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({ date: z.string().regex(DATEKEY), name: z.string().min(2), type: z.enum(['resmi', 'dini', 'custom']), workingBranchIds: z.array(z.number().int()).optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  if (!isRealDate(p.data.date)) return bad(reply, 'Geçersiz tarih');
+  if (await prisma.holiday.findUnique({ where: { date: p.data.date } })) return bad(reply, 'Bu tarihte zaten bir tatil tanımlı');
+  const h = await prisma.holiday.create({ data: { date: p.data.date, name: p.data.name, type: p.data.type, workingBranchIds: JSON.stringify(p.data.workingBranchIds ?? []) } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Tatil eklendi', detail: `${h.date} · ${h.name}` } });
+  return { id: h.id };
+});
+
+app.patch('/api/holidays/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const cur = await prisma.holiday.findUnique({ where: { id } });
+  if (!cur) return reply.code(404).send({ error: 'Tatil bulunamadı' });
+  const p = z.object({ date: z.string().regex(DATEKEY).optional(), name: z.string().min(2).optional(), type: z.enum(['resmi', 'dini', 'custom']).optional(), workingBranchIds: z.array(z.number().int()).optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  if (p.data.date && !isRealDate(p.data.date)) return bad(reply, 'Geçersiz tarih');
+  const data: any = {};
+  if (p.data.date !== undefined) data.date = p.data.date;
+  if (p.data.name !== undefined) data.name = p.data.name;
+  if (p.data.type !== undefined) data.type = p.data.type;
+  if (p.data.workingBranchIds !== undefined) data.workingBranchIds = JSON.stringify(p.data.workingBranchIds);
+  const upd = await prisma.holiday.update({ where: { id }, data });
+  return { id: upd.id };
+});
+
+app.delete('/api/holidays/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const h = await prisma.holiday.findUnique({ where: { id } });
+  if (!h) return reply.code(404).send({ error: 'Tatil bulunamadı' });
+  await prisma.holiday.delete({ where: { id } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Tatil silindi', detail: `${h.date} · ${h.name}` } });
+  return { ok: true };
+});
+
+app.post('/api/holidays/import', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({ year: z.number().int().min(2020).max(2100) }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Yıl gerekli');
+  const added = await importHolidaysForYear(p.data.year);
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Tatiller içe aktarıldı', detail: `${p.data.year} · ${added} eklendi` } });
+  return { added, total: trHolidays(p.data.year).length, religiousIncluded: !!TR_RELIGIOUS[p.data.year] };
+});
+
+// Açılışta tatil takvimi boşsa içinde bulunulan yıl + sonraki yılı otomatik doldur ("sen otomatik at")
+(async () => {
+  try {
+    if (await prisma.holiday.count() === 0) {
+      const y = new Date().getFullYear();
+      await importHolidaysForYear(y);
+      await importHolidaysForYear(y + 1);
+    }
+  } catch { /* yoksay */ }
+})();
 
 app.post('/api/data-requests/:id/done', { preHandler: requireAdmin }, async (req: any, reply) => {
   const id = Number(req.params.id);

@@ -14,6 +14,8 @@ const ST = {
   short: { c: C.warn, bg: C.warnBg, ink: C.warnInk, tr: 'Kısa gün', tone: 'warn' as Tone },
   over: { c: C.brand600, bg: C.brand50, ink: C.brand700, tr: 'Fazla mesai', tone: 'brand' as Tone },
   leave: { c: C.neu, bg: C.neuBg, ink: C.neuInk, tr: 'İzinli', tone: 'neu' as Tone },
+  holiday: { c: C.neu, bg: C.neuBg, ink: C.neuInk, tr: 'Tatil', tone: 'neu' as Tone },
+  'holiday-work': { c: C.brand600, bg: C.brand50, ink: C.brand700, tr: 'Bayram mesaisi', tone: 'brand' as Tone },
   absent: { c: C.err, bg: C.errBg, ink: C.errInk, tr: 'Devamsız', tone: 'err' as Tone },
 };
 const WD = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
@@ -75,11 +77,14 @@ export function HistoryScreen({ onBack, employeeId }: { onBack?: () => void; emp
     api.branchEmployeeTimesheet(employeeId, monthKey).then(r => {
       if (cancelled) return;
       const dd: Record<number, DayInfo> = {};
-      // backend durumları: full | over | missing | short | leave — bilinmeyen durum sessizce "tam gün" olmasın
-      const known: Record<string, keyof typeof ST> = { full: 'full', over: 'over', missing: 'missing', short: 'short', leave: 'leave', absent: 'absent' };
+      // backend durumları: full | over | missing | short | leave | holiday | holiday-work — bilinmeyen durum sessizce "tam gün" olmasın
+      const known: Record<string, keyof typeof ST> = { full: 'full', over: 'over', missing: 'missing', short: 'short', leave: 'leave', holiday: 'holiday', 'holiday-work': 'holiday-work', absent: 'absent' };
       for (const d of r.days) {
-        const st: keyof typeof ST = d.status === 'leave' ? 'leave' : d.flagged ? 'missing' : (known[d.status] ?? 'missing');
-        dd[d.day] = { st, in: d.in, out: d.out, brk: hhmm(d.breakMin), net: d.status === 'leave' ? 'İzinli' : d.netMin > 0 ? hhmm(d.netMin) : '—', diff: d.status === 'leave' ? '—' : d.status === 'missing' ? 'Çıkış yok' : (d.diffMin >= 0 ? '+' : '-') + hhmm(d.diffMin) };
+        const overlay = d.status === 'leave' || d.status === 'holiday' || d.status === 'holiday-work';
+        const st: keyof typeof ST = overlay ? known[d.status] : d.flagged ? 'missing' : (known[d.status] ?? 'missing');
+        const netLabel = d.status === 'leave' ? 'İzinli' : d.status === 'holiday' ? 'Tatil' : d.netMin > 0 ? hhmm(d.netMin) : '—';
+        const diffLabel = (d.status === 'leave' || d.status === 'holiday') ? '—' : d.status === 'missing' ? 'Çıkış yok' : (d.diffMin >= 0 ? '+' : '-') + hhmm(d.diffMin);
+        dd[d.day] = { st, in: d.in, out: d.out, brk: hhmm(d.breakMin), net: netLabel, diff: diffLabel };
       }
       setData(dd);
       setSummary([['Net', hhmm(r.summary.netMin)], ['Fazla', '+' + hhmm(r.summary.overtimeMin)], ['Gün', String(r.summary.present)], ['Eksik', String(r.summary.missing)]]);

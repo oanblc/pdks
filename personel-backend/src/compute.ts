@@ -15,7 +15,8 @@ export type DayOpts = { overnight?: boolean; expectedMin?: number; todayKey?: st
 export type DayRecord = {
   date: string; day: number; in: string | null; out: string | null;
   breakMin: number; netMin: number; diffMin: number;
-  status: 'full' | 'over' | 'missing' | 'short' | 'leave'; flagged: boolean; estimated: boolean; inProgress: boolean;
+  status: 'full' | 'over' | 'missing' | 'short' | 'leave' | 'holiday' | 'holiday-work'; flagged: boolean; estimated: boolean; inProgress: boolean;
+  holidayName?: string;
 };
 
 // Gece vardiyasında sabaha sarkan basışı, başladığı (önceki) iş gününe yaz

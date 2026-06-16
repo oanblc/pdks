@@ -89,6 +89,13 @@ export const api = {
   updateShift: (id: number, body: { name?: string; start?: string; end?: string; breakMin?: number; overnight?: boolean }) =>
     req(`/api/shifts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteShift: (id: number) => req(`/api/shifts/${id}`, { method: 'DELETE' }),
+  holidays: () => req('/api/holidays'),
+  addHoliday: (body: { date: string; name: string; type: 'resmi' | 'dini' | 'custom'; workingBranchIds: number[] }) =>
+    req('/api/holidays', { method: 'POST', body: JSON.stringify(body) }),
+  updateHoliday: (id: number, body: { date?: string; name?: string; type?: 'resmi' | 'dini' | 'custom'; workingBranchIds?: number[] }) =>
+    req(`/api/holidays/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteHoliday: (id: number) => req(`/api/holidays/${id}`, { method: 'DELETE' }),
+  importHolidays: (year: number) => req('/api/holidays/import', { method: 'POST', body: JSON.stringify({ year }) }),
   dsarDone: (id: number) => req(`/api/data-requests/${id}/done`, { method: 'POST' }),
   dsarDetail: (id: number) => req(`/api/data-requests/${id}`),
 }

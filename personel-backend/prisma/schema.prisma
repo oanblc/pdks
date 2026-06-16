@@ -156,3 +156,12 @@ model Setting {
   key   String @id
   value String // JSON
 }
+
+model Holiday {
+  id               Int      @id @default(autoincrement())
+  date             String   @unique // "YYYY-MM-DD"
+  name             String // "Cumhuriyet Bayramı", "Kurban Bayramı 1. Gün"
+  type             String // resmi | dini | custom
+  workingBranchIds String   @default("[]") // o tatilde ÇALIŞACAK şube id'leri (JSON dizi); boş = tüm şubeler kapalı
+  createdAt        DateTime @default(now())
+}
