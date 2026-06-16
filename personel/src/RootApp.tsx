@@ -8,14 +8,19 @@ import { AuthFlow } from './AuthFlow';
 import { KioskApp } from './KioskApp';
 import { setToken, setOnUnauthorized, type Emp } from './api';
 import { saveToken, clearReminderCtx } from './lib/session';
+import { clearAllReminders } from './lib/reminders';
+import { stopBranchGeofence } from './lib/geofence';
 
 export function RootApp() {
   const [intro, setIntro] = useState(true);   // ilk açılış: tanıtım + izinler
   const [mode, setMode] = useState<AppMode | null>(null);
   const [emp, setEmp] = useState<Emp | null>(null);
 
-  // Oturum düşerse (401) çalışanı girişe döndür
-  useEffect(() => { setOnUnauthorized(() => { setEmp(null); }); return () => setOnUnauthorized(null); }, []);
+  // Oturum düşerse (401) çalışanı girişe döndür + kalıcı token/bağlamı temizle + geofence'i durdur
+  useEffect(() => {
+    setOnUnauthorized(() => { saveToken(null); clearReminderCtx(); clearAllReminders(); stopBranchGeofence(); setEmp(null); });
+    return () => setOnUnauthorized(null);
+  }, []);
 
   return (
     <View style={{ flex: 1 }}>

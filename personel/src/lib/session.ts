@@ -8,13 +8,13 @@ const CTX_KEY = 'pdks-reminder-ctx';
 export type Geo = { lat: number; lng: number; radius: number };
 export type ReminderCtx = {
   apiBase: string;
-  shiftStart: string | null;   // "09:00"
-  shiftEnd: string | null;     // "18:00"
+  shiftStartAt: string | null; // ISO — backend (İstanbul, gece vardiyası bilinçli)
+  shiftEndAt: string | null;   // ISO
   breakMin: number | null;
-  overnight: boolean;
   lateToleranceMin: number;
   branchGeo: Geo | null;
   lastStatus?: 'outside' | 'inside' | 'break'; // backend'e ulaşılamazsa kullanılacak son bilinen durum
+  lastStatusAt?: number;       // lastStatus ne zaman tazelendi (ms) — bayat veriye güvenmemek için
 };
 
 export async function saveToken(t: string | null) {

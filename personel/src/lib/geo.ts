@@ -1,7 +1,7 @@
 // geo.ts — şube geofence: mesafe hesabı + şube merkezi (oturum içi eşleme)
 export type LatLng = { lat: number; lng: number };
 
-export const GEOFENCE_RADIUS_M = 50;
+export const GEOFENCE_RADIUS_M = 100; // sunucu varsayılanıyla (PUNCH_RADIUS_M) hizalı
 
 // Haversine — iki nokta arası mesafe (metre)
 export function distanceMeters(a: LatLng, b: LatLng): number {

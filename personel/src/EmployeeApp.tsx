@@ -63,16 +63,17 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
   const [showNotif, setShowNotif] = useState(false);
   const [onb, setOnb] = useState<{ start: number } | null>(null);
   const [push, setPush] = useState<{ title: string; body: string; tone: string; icon: any } | null>(null);
-  const [meExtra, setMeExtra] = useState<{ lateToleranceMin: number; branchGeo: Geo | null }>({ lateToleranceMin: 15, branchGeo: null });
+  // me() ile gelen taze hatırlatma bağlamı (vardiya mutlak zamanları dahil — login prop'u bayatlamaz)
+  type MeExtra = { lateToleranceMin: number; branchGeo: Geo | null; shiftStartAt: string | null; shiftEndAt: string | null; breakMin: number | null };
+  const [meExtra, setMeExtra] = useState<MeExtra>({ lateToleranceMin: 15, branchGeo: null, shiftStartAt: null, shiftEndAt: null, breakMin: employee?.breakMin ?? null });
 
   // Hatırlatmaları güncelle (mevcut konumu okuyarak); koşul doluysa banner göster.
-  const runSync = async (statusNow: Status, breakStartMs: number | null, extra: { lateToleranceMin: number; branchGeo: Geo | null }) => {
+  const runSync = async (statusNow: Status, breakStartMs: number | null, extra: MeExtra) => {
     if (!live) return;
     const coords = await getCoords().catch(() => null);
     const banner = await syncReminders({
       status: statusNow, breakStartMs,
-      shiftStart: employee?.shiftStart ?? null, shiftEnd: employee?.shiftEnd ?? null,
-      breakMin: employee?.breakMin ?? null, overnight: employee?.overnight ?? false,
+      shiftStartAt: extra.shiftStartAt, shiftEndAt: extra.shiftEndAt, breakMin: extra.breakMin,
       lateToleranceMin: extra.lateToleranceMin, branchGeo: extra.branchGeo, coords,
     });
     if (banner) setPush(banner);
@@ -88,7 +89,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
       setStatus(st);
       setEntryTime(r.today.entryTime ? Date.parse(r.today.entryTime) : null);
       setBreakStart(bs);
-      const extra = { lateToleranceMin: r.lateToleranceMin ?? 15, branchGeo: r.branchGeo };
+      const extra: MeExtra = { lateToleranceMin: r.lateToleranceMin ?? 15, branchGeo: r.branchGeo, shiftStartAt: r.shiftStartAt, shiftEndAt: r.shiftEndAt, breakMin: r.employee.breakMin ?? null };
       setMeExtra(extra);
       setIsManager(!!r.employee.isManager);
       setKioskCode(r.kioskCode);

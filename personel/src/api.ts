@@ -43,7 +43,7 @@ export const api = {
   register: (body: { tc: string; name: string; phone?: string; address?: string; branchId?: number; password: string }) =>
     req('/api/employee/register', { method: 'POST', body: JSON.stringify(body) }) as Promise<{ ok: boolean }>,
   branches: () => req('/api/branches') as Promise<{ id: number; name: string; city: string; shift: string }[]>,
-  me: () => req('/api/me') as Promise<{ employee: Emp; today: { status: 'outside' | 'inside' | 'break'; entryTime: string | null; breakStart: string | null }; lateToleranceMin: number; branchGeo: { lat: number; lng: number; radius: number } | null; kioskCode: string | null }>,
+  me: () => req('/api/me') as Promise<{ employee: Emp; today: { status: 'outside' | 'inside' | 'break'; entryTime: string | null; breakStart: string | null }; lateToleranceMin: number; branchGeo: { lat: number; lng: number; radius: number } | null; kioskCode: string | null; shiftStartAt: string | null; shiftEndAt: string | null }>,
   punch: (branchId: number, action: string, coords?: { lat: number; lng: number }, deviceCode?: string) =>
     req('/api/punch', { method: 'POST', body: JSON.stringify({ branchId, action, ...(coords || {}), ...(deviceCode ? { deviceCode } : {}) }) }) as Promise<{ ok: boolean; action: string; time: string }>,
   branchSetLocation: (lat: number, lng: number, force = false) =>

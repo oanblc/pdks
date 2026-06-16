@@ -1,10 +1,10 @@
 // reminders.ts — ön plan hatırlatma motoru.
 // api.me() sonrası ve her punch sonrası çağrılır: zamanlı bildirimleri planlar/iptal eder,
 // koşul zaten doluysa anlık banner döndürür. Arka plan görevi için bağlamı da kaydeder.
+// Vardiya zamanları backend'den MUTLAK (ISO) gelir — istemcide saat dilimi/gece-vardiyası hesabı yapılmaz.
 import { distanceMeters } from './geo';
 import { scheduleAt, cancel, presentNow, REMINDER_IDS } from './notify';
 import { saveReminderCtx, type Geo } from './session';
-import { shiftStartDate, shiftEndDate, addMinutes } from './shiftTime';
 import { API_BASE } from '../api';
 
 export type ReminderBanner = { title: string; body: string; tone: 'warn' | 'err' | 'neu' | 'ok'; icon: string };
@@ -12,22 +12,21 @@ export type ReminderBanner = { title: string; body: string; tone: 'warn' | 'err'
 export type ReminderInput = {
   status: 'outside' | 'inside' | 'break';
   breakStartMs: number | null;
-  shiftStart: string | null;
-  shiftEnd: string | null;
+  shiftStartAt: string | null; // ISO (backend)
+  shiftEndAt: string | null;   // ISO (backend)
   breakMin: number | null;
-  overnight: boolean;
   lateToleranceMin: number;
   branchGeo: Geo | null;
   coords?: { lat: number; lng: number } | null; // ön plan konumu (varsa)
 };
 
-// Arka plan görevinin okuyacağı bağlamı kalıcı yaz.
+// Arka plan görevinin okuyacağı bağlamı kalıcı yaz (lastStatus zaman damgalı — bayat veriye güvenmemek için).
 export async function persistReminderCtx(i: ReminderInput) {
   await saveReminderCtx({
     apiBase: API_BASE,
-    shiftStart: i.shiftStart, shiftEnd: i.shiftEnd, breakMin: i.breakMin,
-    overnight: i.overnight, lateToleranceMin: i.lateToleranceMin, branchGeo: i.branchGeo,
-    lastStatus: i.status,
+    shiftStartAt: i.shiftStartAt, shiftEndAt: i.shiftEndAt, breakMin: i.breakMin,
+    lateToleranceMin: i.lateToleranceMin, branchGeo: i.branchGeo,
+    lastStatus: i.status, lastStatusAt: Date.now(),
   });
 }
 
@@ -58,23 +57,23 @@ export async function syncReminders(i: ReminderInput): Promise<ReminderBanner | 
     await cancel(REMINDER_IDS.breakOver);
   }
 
-  // 2) Geç giriş — şube içinde + giriş yok
-  const start = shiftStartDate(i.shiftStart);
-  if (i.status === 'outside' && start && insideBranch(i) === true) {
-    const when = addMinutes(start, i.lateToleranceMin);
-    if (now >= when.getTime()) {
+  // 2) Geç giriş — şube içinde + giriş yok (vardiya başlangıcı backend mutlak zamanı)
+  const startMs = i.shiftStartAt ? Date.parse(i.shiftStartAt) : NaN;
+  if (i.status === 'outside' && !isNaN(startMs) && insideBranch(i) === true) {
+    const when = startMs + i.lateToleranceMin * 60000;
+    if (now >= when) {
       banner = banner ?? { title: 'Giriş okutmadın', body: 'Vardiyan başladı ve şubedesin ama giriş okutmadın. Lütfen giriş okut.', tone: 'warn', icon: 'bell' };
       await cancel(REMINDER_IDS.lateIn);
     } else {
-      await scheduleAt(REMINDER_IDS.lateIn, when, 'Giriş okutmadın', 'Vardiyan başladı ve şubedesin ama giriş okutmadın. Lütfen giriş okut.');
+      await scheduleAt(REMINDER_IDS.lateIn, new Date(when), 'Giriş okutmadın', 'Vardiyan başladı ve şubedesin ama giriş okutmadın. Lütfen giriş okut.');
     }
   } else {
     await cancel(REMINDER_IDS.lateIn);
   }
 
-  // 3) Eksik çıkış — vardiya bitti, hâlâ giriş açık
-  const end = shiftEndDate(i.shiftStart, i.shiftEnd, i.overnight);
-  if (i.status !== 'outside' && end && now >= end.getTime()) {
+  // 3) Eksik çıkış — vardiya bitti, hâlâ giriş açık (vardiya bitişi backend mutlak zamanı)
+  const endMs = i.shiftEndAt ? Date.parse(i.shiftEndAt) : NaN;
+  if (i.status !== 'outside' && !isNaN(endMs) && now >= endMs) {
     if (insideBranch(i) === false) {
       // İşletme dışında + çıkış okutulmamış → gerçek eksik çıkış (ön plan güvenlik ağı; arka plan geofence olayını tamamlar)
       const b = { title: 'Çıkış okutmadın', body: 'İşletmeden ayrıldın ama çıkış okutmadın. Puantajın eksik kalmasın, çıkış okut.', tone: 'warn' as const, icon: 'bell' };
@@ -92,8 +91,9 @@ export async function syncReminders(i: ReminderInput): Promise<ReminderBanner | 
   return banner;
 }
 
-// Çıkış yapıldığında / oturum kapandığında tüm hatırlatmaları temizle.
+// Çıkış yapıldığında / oturum kapandığında / 401'de tüm hatırlatmaları temizle.
 export async function clearAllReminders() {
+  missingExitNotified = false; // kullanıcı değişiminde bayrak sıfırlanır (aksi halde eksik-çıkış takılır)
   await cancel(REMINDER_IDS.breakOver);
   await cancel(REMINDER_IDS.lateIn);
   await cancel(REMINDER_IDS.missingExit);

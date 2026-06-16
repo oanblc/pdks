@@ -27,9 +27,10 @@ const app = Fastify({ logger: true });
 await app.register(helmet, { contentSecurityPolicy: PROD ? undefined : false });
 // CORS: ALLOWED_ORIGINS (virgüllü liste) verilmişse yalnız o originlere izin ver; verilmezse dev'de tüm originler.
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-if (PROD && ALLOWED_ORIGINS.length === 0) console.warn('UYARI: production ortamında ALLOWED_ORIGINS tanımlı değil — CORS tüm originlere açık kalır.');
+if (PROD && ALLOWED_ORIGINS.length === 0) console.warn('UYARI: production ortamında ALLOWED_ORIGINS tanımlı değil — çapraz-origin istekler reddedilecek (varsayılan kapalı).');
 await app.register(cors, {
-  origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : true,
+  // Prod'da ALLOWED_ORIGINS boşsa varsayılan KAPALI (çapraz-origin reddedilir); dev'de tüm originler açık.
+  origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : (PROD ? false : true),
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
 });
 await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
@@ -162,7 +163,9 @@ app.get('/api/me', { preHandler: requireEmployee }, async (req: any) => {
   const branchGeo = b && b.lat != null && b.lng != null ? { lat: b.lat, lng: b.lng, radius: b.radius ?? 100 } : null;
   // Yalnız şube yetkilisi bugünün kiosk kodunu görür
   const kioskCode = emp?.isManager && emp?.branchId ? dailyKioskCode(emp.branchId, dKey(new Date())) : null;
-  return { employee: publicEmployee(emp), today: statusFromPunches(punches), lateToleranceMin: cfg.lateToleranceMin, branchGeo, kioskCode };
+  // Vardiya baş/bitiş mutlak zamanları (İstanbul, gece vardiyası bilinçli) — hatırlatmalar istemcide TZ hesabı yapmasın
+  const { startAt: shiftStartAt, endAt: shiftEndAt } = shiftInstants((emp as any)?.shift);
+  return { employee: publicEmployee(emp), today: statusFromPunches(punches), lateToleranceMin: cfg.lateToleranceMin, branchGeo, kioskCode, shiftStartAt, shiftEndAt };
 });
 
 app.post('/api/punch', { preHandler: requireEmployee }, async (req: any, reply) => {
@@ -230,14 +233,19 @@ app.post('/api/requests', { preHandler: requireEmployee }, async (req: any, repl
   if (p.data.kind === 'leave') {
     for (const v of [p.data.leaveStart, p.data.leaveEnd]) if (v && !isRealDate(v)) return bad(reply, 'Geçersiz tarih');
   }
-  if (p.data.kind === 'leave' && p.data.leaveStart && p.data.leaveEnd && p.data.leaveEnd < p.data.leaveStart)
-    return bad(reply, 'Bitiş tarihi başlangıçtan önce olamaz');
+  // İzin talebi en az başlangıç tarihi ister; bitiş verilmezse tek günlük sayılır (başlangıç = bitiş).
+  let leaveStart: string | null = null, leaveEnd: string | null = null;
+  if (p.data.kind === 'leave') {
+    if (!p.data.leaveStart) return bad(reply, 'İzin için başlangıç tarihi gerekli');
+    leaveStart = p.data.leaveStart;
+    leaveEnd = p.data.leaveEnd ?? p.data.leaveStart;
+    if (leaveEnd < leaveStart) return bad(reply, 'Bitiş tarihi başlangıçtan önce olamaz');
+  }
   const emp = await prisma.employee.findUnique({ where: { id: req.user.sub } });
   // Talep önce çalışanın şubesinin müdürüne (kiosk) düşer
   await prisma.request.create({ data: {
     employeeId: req.user.sub, kind: p.data.kind, type: p.data.type, detail: p.data.detail,
-    leaveStart: p.data.kind === 'leave' ? p.data.leaveStart ?? null : null,
-    leaveEnd: p.data.kind === 'leave' ? p.data.leaveEnd ?? null : null,
+    leaveStart, leaveEnd,
     branchId: emp?.branchId ?? null, stage: 'manager',
   } });
   return { ok: true };
@@ -246,10 +254,26 @@ app.post('/api/requests', { preHandler: requireEmployee }, async (req: any, repl
 // Onaylı izin günleri (YYYY-MM-DD kümesi) — belirli aralıkta
 const dKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-// Şubenin günlük kiosk kodu — deterministik (saklama yok), her gün (İstanbul) değişir.
+// Şubenin günlük kiosk kodu — deterministik (saklama yok), her gün (İstanbul) değişir. 6 hane.
 function dailyKioskCode(branchId: number, dateKey: string): string {
   const h = createHmac('sha256', JWT_SECRET).update(`kiosk:${branchId}:${dateKey}`).digest('hex');
-  return String(parseInt(h.slice(0, 6), 16) % 10000).padStart(4, '0');
+  return String(parseInt(h.slice(0, 10), 16) % 1000000).padStart(6, '0');
+}
+
+// Vardiya baş/bitiş saatini bugünün (İstanbul) mutlak zamanına çevir — gece vardiyası iş gününe göre çapalanır.
+// Sunucu TZ=Europe/Istanbul olduğundan new Date()/setHours İstanbul yerel saatidir.
+function shiftInstants(shift: { start: string; end: string; overnight: boolean } | null | undefined, now = new Date()): { startAt: string | null; endAt: string | null } {
+  if (!shift) return { startAt: null, endAt: null };
+  const toMin = (s: string) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+  // İş günü çapası: gece vardiyasında ve şu an öğleden önceyse, vardiya dün başlamıştır.
+  const anchor = new Date(now);
+  if (shift.overnight && now.getHours() < 12) anchor.setDate(anchor.getDate() - 1);
+  const [sh, sm] = shift.start.split(':').map(Number);
+  const [eh, em] = shift.end.split(':').map(Number);
+  const startAt = new Date(anchor); startAt.setHours(sh, sm, 0, 0);
+  const endAt = new Date(anchor); endAt.setHours(eh, em, 0, 0);
+  if (shift.overnight && toMin(shift.end) <= toMin(shift.start)) endAt.setDate(endAt.getDate() + 1);
+  return { startAt: startAt.toISOString(), endAt: endAt.toISOString() };
 }
 async function approvedLeaveDays(empId: number, startKey?: string, endKey?: string): Promise<Set<string>> {
   const reqs = await prisma.request.findMany({ where: { employeeId: empId, kind: 'leave', status: 'approved', NOT: { leaveStart: null } } });
@@ -514,6 +538,9 @@ async function employeeTimesheet(empId: number, start: Date, end: Date, label: s
 
 // Sorgudan dönem aralığı: ?from=&to= (gün bazlı) veya ?month= (aylık) ya da bu ay
 const isDate = (v: any) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+const MONTHKEY = /^\d{4}-(0[1-9]|1[0-2])$/;
+// Geçersiz/eksik ?month → bu ay (NaN Date + Prisma 500/stack sızıntısı yerine güvenli geri dönüş)
+const safeMonth = (m: any): string => (typeof m === 'string' && MONTHKEY.test(m)) ? m : currentMonth();
 function rangeFromQuery(q: any): { start: Date; end: Date; label: string } {
   if (isDate(q?.from) && isDate(q?.to)) {
     let a = new Date(q.from + 'T00:00:00'), b = new Date(q.to + 'T00:00:00');
@@ -521,7 +548,7 @@ function rangeFromQuery(q: any): { start: Date; end: Date; label: string } {
     const end = new Date(b); end.setDate(end.getDate() + 1); // bitiş günü dahil
     return { start: a, end, label: q.from === q.to ? q.from : `${q.from} – ${q.to}` };
   }
-  const month = (q?.month as string) || currentMonth();
+  const month = safeMonth(q?.month);
   const { start, end } = monthRange(month);
   return { start, end, label: month };
 }
@@ -557,7 +584,7 @@ app.post('/api/employees/:id/resolve-flag', { preHandler: requireAdmin }, async 
 app.get('/api/branch/employee/:id/timesheet', { preHandler: requireBranch }, async (req: any, reply) => {
   const emp = await prisma.employee.findUnique({ where: { id: Number(req.params.id) } });
   if (!emp || emp.branchId !== req.user.sub) return reply.code(404).send({ error: 'Çalışan bu şubede değil' });
-  const month = (req.query?.month as string) || currentMonth();
+  const month = safeMonth(req.query?.month);
   const { start, end } = monthRange(month);
   return employeeTimesheet(emp.id, start, end, month);
 });
@@ -620,9 +647,16 @@ app.post('/api/branch/manual-punch', { preHandler: requireBranch }, async (req: 
 });
 
 /* ───────── ÇALIŞAN YÖNETİMİ (admin) ───────── */
+// Referans (FK) doğrulaması — olmayan branchId/shiftId Prisma 500 (P2003) yerine temiz 400 döndürür.
+async function assertFk(reply: any, branchId?: number | null, shiftId?: number | null): Promise<boolean> {
+  if (branchId != null && !(await prisma.branch.findUnique({ where: { id: branchId } }))) { bad(reply, 'Geçersiz şube'); return false; }
+  if (shiftId != null && !(await prisma.shift.findUnique({ where: { id: shiftId } }))) { bad(reply, 'Geçersiz vardiya'); return false; }
+  return true;
+}
 app.post('/api/employees', { preHandler: requireAdmin }, async (req: any, reply) => {
   const p = z.object({ name: z.string().min(2), tc: z.string().regex(/^\d{11}$/), dept: z.string().optional(), role: z.string().optional(), branchId: z.number().int().optional(), shiftId: z.number().int().optional(), password: z.string().min(4) }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  if (!(await assertFk(reply, p.data.branchId, p.data.shiftId))) return;
   if (await prisma.employee.findUnique({ where: { tc: p.data.tc } })) return bad(reply, 'Bu TC ile kayıt zaten var');
   const emp = await prisma.employee.create({ data: { name: p.data.name, tc: p.data.tc, dept: p.data.dept, role: p.data.role, branchId: p.data.branchId ?? null, shiftId: p.data.shiftId ?? null, passwordHash: await bcrypt.hash(p.data.password, 10), status: 'active', sicil: await nextSicil() } });
   await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Çalışan eklendi', detail: emp.name } });
@@ -642,6 +676,7 @@ app.patch('/api/employees/:id', { preHandler: requireAdmin }, async (req: any, r
     isManager: z.boolean().optional(),
   }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  if (!(await assertFk(reply, p.data.branchId, p.data.shiftId))) return;
   const data: any = {};
   for (const k of ['name', 'dept', 'role', 'branchId', 'shiftId', 'isManager'] as const) {
     if (p.data[k] !== undefined) data[k] = p.data[k];
@@ -738,6 +773,7 @@ app.get('/api/devices', { preHandler: requireAdmin }, async () => {
 app.post('/api/devices', { preHandler: requireAdmin }, async (req: any, reply) => {
   const p = z.object({ branchId: z.number().int(), label: z.string().max(40).optional() }).safeParse(req.body);
   if (!p.success) return bad(reply, 'Şube gerekli');
+  if (!(await assertFk(reply, p.data.branchId))) return;
   const n = await prisma.device.count();
   const dev = await prisma.device.create({ data: { branchId: p.data.branchId, label: p.data.label?.trim() || null, code: `TBL-${String(300 + (n * 17) % 9600).padStart(4, '0')}` } });
   await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Cihaz eşlendi', detail: `${dev.code}${dev.label ? ' · ' + dev.label : ''}` } });
@@ -779,8 +815,8 @@ app.post('/api/devices/:id/reactivate', { preHandler: requireAdmin }, async (req
 });
 
 app.post('/api/shifts', { preHandler: requireAdmin }, async (req: any, reply) => {
-  const p = z.object({ name: z.string().min(2), start: z.string(), end: z.string(), breakMin: z.number().int().optional(), overnight: z.boolean().optional() }).safeParse(req.body);
-  if (!p.success) return bad(reply, 'Geçersiz vardiya');
+  const p = z.object({ name: z.string().min(2), start: z.string().regex(HHMM, 'Başlangıç saati HH:MM olmalı'), end: z.string().regex(HHMM, 'Bitiş saati HH:MM olmalı'), breakMin: z.number().int().min(0).max(600).optional(), overnight: z.boolean().optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz vardiya');
   const s = await prisma.shift.create({ data: { name: p.data.name, start: p.data.start, end: p.data.end, breakMin: p.data.breakMin ?? 60, overnight: p.data.overnight ?? false } });
   return { id: s.id, name: s.name };
 });
@@ -816,8 +852,10 @@ app.delete('/api/shifts/:id', { preHandler: requireAdmin }, async (req: any, rep
   return { ok: true };
 });
 
-app.post('/api/data-requests/:id/done', { preHandler: requireAdmin }, async (req: any) => {
-  const dr = await prisma.dataRequest.update({ where: { id: Number(req.params.id) }, data: { status: 'done' }, include: { employee: true } });
+app.post('/api/data-requests/:id/done', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  if (!(await prisma.dataRequest.findUnique({ where: { id } }))) return reply.code(404).send({ error: 'Talep bulunamadı' });
+  const dr = await prisma.dataRequest.update({ where: { id }, data: { status: 'done' }, include: { employee: true } });
   await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'kvkk', action: 'İlgili kişi talebi tamamlandı', detail: `${dr.employee.name} · ${dr.type}` } });
   return { ok: true };
 });
@@ -848,7 +886,7 @@ app.get('/api/data-requests/:id', { preHandler: requireAdmin }, async (req: any,
 
 // Puantaj & Mesai — bayraklı kayıtlar + haftalık 45 saat
 app.get('/api/timesheet', { preHandler: requireAdmin }, async (req: any) => {
-  const month = (req.query?.month as string) || currentMonth();
+  const month = safeMonth(req.query?.month);
   const { start, end } = monthRange(month);
   const emps = await prisma.employee.findMany({ where: { status: 'active' }, include: { branch: true, shift: true }, orderBy: { name: 'asc' } });
   const employees: any[] = [];
@@ -1002,7 +1040,7 @@ app.post('/api/payroll/close', { preHandler: requireAdmin }, async (req: any) =>
 /* ───────── RAPORLAR ───────── */
 app.get('/api/reports', { preHandler: requireAdmin }, async (req: any) => {
   const cfg = await getRiskCfg();
-  const month = (req.query?.month as string) || currentMonth();
+  const month = safeMonth(req.query?.month);
   const { start, end } = monthRange(month);
   const emps = await prisma.employee.findMany({ where: { status: 'active' }, include: { shift: true, branch: true } });
   const rows: any[] = [];

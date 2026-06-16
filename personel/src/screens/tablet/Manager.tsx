@@ -17,7 +17,7 @@ export function PinPad({ onOk, onClose }: { onOk: () => void; onClose: () => voi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   useEffect(() => {
-    if (pin.length !== 4 || busy) return;
+    if (pin.length !== 6 || busy) return;
     let cancelled = false;
     setBusy(true);
     api.branchVerifyPin(pin)
@@ -34,7 +34,7 @@ export function PinPad({ onOk, onClose }: { onOk: () => void; onClose: () => voi
   const push = (k: string) => {
     setError(false);
     if (k === 'del') setPin(p => p.slice(0, -1));
-    else setPin(p => (p.length < 4 && !busy ? p + k : p));
+    else setPin(p => (p.length < 6 && !busy ? p + k : p));
   };
   return (
     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(13,20,19,0.55)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 }}>
@@ -47,7 +47,7 @@ export function PinPad({ onOk, onClose }: { onOk: () => void; onClose: () => voi
           <T v="h3" style={{ marginTop: 10 }}>Yönetici PIN’i</T>
           <T v="sm" color={C.ink3}>İnceleme moduna geçiş</T>
           <View style={{ flexDirection: 'row', gap: 14, marginTop: 18, marginBottom: 8 }}>
-            {[0, 1, 2, 3].map(i => <View key={i} style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: error ? C.errRing : C.brand500, backgroundColor: i < pin.length ? (error ? C.err : C.brand600) : 'transparent' }} />)}
+            {[0, 1, 2, 3, 4, 5].map(i => <View key={i} style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: error ? C.errRing : C.brand500, backgroundColor: i < pin.length ? (error ? C.err : C.brand600) : 'transparent' }} />)}
           </View>
           <T v="sm" color={error ? C.err : C.ink3} style={{ height: 20, marginBottom: 10 }}>{error ? 'PIN hatalı' : busy ? 'Doğrulanıyor…' : ' '}</T>
         </View>
