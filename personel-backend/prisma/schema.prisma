@@ -120,9 +120,10 @@ model Punch {
   deviceId   Int?     // hangi ekrandan/cihazdan okutuldu
   device     Device?  @relation(fields: [deviceId], references: [id])
   action     String   // enter | exit | break-out | break-in
-  serverTime DateTime @default(now()) // otoritatif zaman damgası
+  serverTime DateTime @default(now()) // otoritatif zaman damgası (çevrimdışı kuyrukta gerçek okutma anı)
   status     String   @default("ok")  // ok | review | confirmed (müdür onayladı)
-  source     String   @default("qr")  // qr | manual
+  source     String   @default("qr")  // qr | manual | offline (çevrimdışı kuyruktan senkronlandı)
+  clientId   String?  @unique          // çevrimdışı okutma idempotency anahtarı (tekrar gönderimde çift kayıt olmaz)
   createdAt  DateTime @default(now())
 
   @@index([employeeId, serverTime]) // puantaj sorguları (çalışan + dönem)

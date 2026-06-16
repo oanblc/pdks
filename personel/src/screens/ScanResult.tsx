@@ -139,7 +139,7 @@ export function ResultScreen({ kind, action, time, branch, message, onDone, onRe
   const tone = kind === 'success' ? toneInk : kind === 'queued' ? C.warnInk : C.errInk;
 
   useEffect(() => {
-    if (kind === 'success') { const t = setTimeout(onDone, 2600); return () => clearTimeout(t); }
+    if (kind === 'success' || kind === 'queued') { const t = setTimeout(onDone, 2600); return () => clearTimeout(t); }
   }, []);
 
   return (

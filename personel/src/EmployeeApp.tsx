@@ -14,6 +14,8 @@ import { TabBar } from './components/ui';
 import { initNotifications } from './lib/notify';
 import { syncReminders, clearAllReminders } from './lib/reminders';
 import { startBranchGeofence, stopBranchGeofence } from './lib/geofence';
+import { enqueuePunch, flushQueue, newClientId } from './lib/punchQueue';
+import type { ApiError } from './api';
 import type { Geo } from './lib/session';
 
 type Overlay =
@@ -83,6 +85,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
   const refresh = async () => {
     if (!live) return;
     try {
+      await flushQueue().catch(() => {}); // bekleyen çevrimdışı okutmaları önce gönder ki durum güncel gelsin
       const r = await api.me();
       const st = r.today.status;
       const bs = r.today.breakStart ? Date.parse(r.today.breakStart) : null;
@@ -130,13 +133,25 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
     if (overlay?.type !== 'scan') return;
     const a = overlay.action;
     if (live) {
+      const bId = scan?.branchId ?? branchId;
+      const coords = await getCoords();
+      const clientId = newClientId();
+      const clientTime = new Date().toISOString();
       try {
-        const coords = await getCoords();
-        const r = await api.punch(scan?.branchId ?? branchId, a, coords || undefined, scan?.deviceCode);
+        const r = await api.punch(bId, a, coords || undefined, scan?.deviceCode, { clientId, clientTime });
         applyAction(a);
         setOverlay({ type: 'result', kind: 'success', action: a, time: hm(r.time), branch: display.branch });
-      } catch (e: any) {
-        setOverlay({ type: 'result', kind: 'error', action: a, time: '', branch: display.branch, message: e?.message });
+        flushQueue().catch(() => {}); // varsa birikmiş kuyruğu da boşalt
+      } catch (e) {
+        const err = e as ApiError;
+        if (err?.network) {
+          // Bağlantı yok → okutmayı kuyruğa al, bağlantı gelince otomatik gönderilir
+          await enqueuePunch({ clientId, branchId: bId, action: a, lat: coords?.lat, lng: coords?.lng, deviceCode: scan?.deviceCode, clientTime });
+          applyAction(a);
+          setOverlay({ type: 'result', kind: 'queued', action: a, time: hm(clientTime), branch: display.branch });
+        } else {
+          setOverlay({ type: 'result', kind: 'error', action: a, time: '', branch: display.branch, message: err?.message });
+        }
       }
       return;
     }

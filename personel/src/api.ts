@@ -19,20 +19,30 @@ export type Emp = {
   isManager?: boolean;
 };
 
+// Hata nesnesi: ağ hatası (.network) ile sunucu hatası (.status) ayırt edilir — çevrimdışı kuyruk bunu kullanır
+export type ApiError = Error & { network?: boolean; status?: number; code?: string };
+
 async function req(path: string, opts: RequestInit = {}): Promise<any> {
-  const res = await fetch(BASE + path, {
-    ...opts,
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...(opts.headers || {}),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(BASE + path, {
+      ...opts,
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(opts.headers || {}),
+      },
+    });
+  } catch {
+    // fetch fırlattı → bağlantı yok / sunucuya ulaşılamadı
+    const err = new Error('Bağlantı yok') as ApiError; err.network = true; throw err;
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     // Geçerli bir oturumla 401 alındıysa (token süresi doldu / iptal) → girişe dön
     if (res.status === 401 && token) { setToken(null); onUnauthorized?.(); }
-    throw new Error(data.error || `Hata (${res.status})`);
+    const err = new Error(data.error || `Hata (${res.status})`) as ApiError;
+    err.status = res.status; err.code = data.code; throw err;
   }
   return data;
 }
@@ -44,8 +54,8 @@ export const api = {
     req('/api/employee/register', { method: 'POST', body: JSON.stringify(body) }) as Promise<{ ok: boolean }>,
   branches: () => req('/api/branches') as Promise<{ id: number; name: string; city: string; shift: string }[]>,
   me: () => req('/api/me') as Promise<{ employee: Emp; today: { status: 'outside' | 'inside' | 'break'; entryTime: string | null; breakStart: string | null }; lateToleranceMin: number; branchGeo: { lat: number; lng: number; radius: number } | null; kioskCode: string | null; shiftStartAt: string | null; shiftEndAt: string | null }>,
-  punch: (branchId: number, action: string, coords?: { lat: number; lng: number }, deviceCode?: string) =>
-    req('/api/punch', { method: 'POST', body: JSON.stringify({ branchId, action, ...(coords || {}), ...(deviceCode ? { deviceCode } : {}) }) }) as Promise<{ ok: boolean; action: string; time: string }>,
+  punch: (branchId: number, action: string, coords?: { lat: number; lng: number }, deviceCode?: string, extra?: { clientId?: string; clientTime?: string }) =>
+    req('/api/punch', { method: 'POST', body: JSON.stringify({ branchId, action, ...(coords || {}), ...(deviceCode ? { deviceCode } : {}), ...(extra || {}) }) }) as Promise<{ ok: boolean; action: string; time: string; duplicate?: boolean }>,
   branchSetLocation: (lat: number, lng: number, force = false) =>
     req('/api/branch/location', { method: 'POST', body: JSON.stringify({ lat, lng, force }) }) as Promise<{ ok: boolean; set: boolean; lat: number; lng: number }>,
   request: (body: { kind: 'leave' | 'fix'; type: string; detail?: string; leaveStart?: string; leaveEnd?: string }) =>

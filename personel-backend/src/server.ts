@@ -175,14 +175,34 @@ app.post('/api/punch', { preHandler: requireEmployee, config: { rateLimit: { max
     lat: z.number().min(-90).max(90).optional(),
     lng: z.number().min(-180).max(180).optional(),
     deviceCode: z.string().optional(), // okutulan ekranın/cihazın kodu (QR'dan)
+    clientTime: z.string().datetime().optional(), // çevrimdışı kuyruk: gerçek okutma anı (ISO)
+    clientId: z.string().min(8).max(64).optional(), // çevrimdışı idempotency anahtarı
   }).safeParse(req.body);
   if (!p.success) return bad(reply, 'Geçersiz okutma');
+
+  // ── Çevrimdışı idempotency: aynı clientId ile gelen tekrar yeni kayıt açmaz ──
+  if (p.data.clientId) {
+    const dup = await prisma.punch.findUnique({ where: { clientId: p.data.clientId } });
+    if (dup) return { ok: true, action: dup.action, time: dup.serverTime, duplicate: true };
+  }
+
+  // ── Gerçek okutma anı: çevrimdışı kuyruktan geldiyse clientTime (mantıklı sınırlar içinde) ──
+  // Saat manipülasyonuna karşı: gelecekte >2 dk veya geçmişte >7 gün olan zaman damgası reddedilir → sunucu zamanına düşer.
+  let punchAt = new Date();
+  let source = 'qr';
+  if (p.data.clientTime) {
+    const t = new Date(p.data.clientTime);
+    const now = Date.now();
+    if (!isNaN(+t) && +t <= now + 2 * 60_000 && +t >= now - 7 * 86_400_000) { punchAt = t; source = 'offline'; }
+    else source = 'offline'; // şüpheli zaman → yine de offline işaretle, ama sunucu zamanını kullan
+  }
+
   // Çıkış sürecindeki/onaysız çalışan token'ı elinde olsa bile okutamaz.
   const me = await prisma.employee.findUnique({ where: { id: req.user.sub } });
   if (!me || me.status !== 'active') return reply.code(403).send({ error: 'Hesabınız aktif değil, okutma yapılamaz' });
 
-  // Onaylı izin günündeyse okutma yapamaz.
-  if (await isOnApprovedLeave(req.user.sub, dKey(new Date())))
+  // Okutma günü izinliyse okutma yapamaz (çevrimdışıda gerçek okutma gününe bakılır).
+  if (await isOnApprovedLeave(req.user.sub, dKey(punchAt)))
     return reply.code(403).send({ error: 'Bugün izinlisiniz; giriş-çıkış okutması yapılamaz.', code: 'ON_LEAVE' });
 
   // ── Hangi ekrandan okutuldu: cihaz kodu verildiyse doğrula (şubeye ait + iptal değil) ──
@@ -207,13 +227,24 @@ app.post('/api/punch', { preHandler: requireEmployee, config: { rateLimit: { max
   }
   // ── İdempotency: 60 sn içinde aynı eylemin tekrarı yeni kayıt açmaz (çift okutma/double-punch) ──
   const last = await prisma.punch.findFirst({ where: { employeeId: req.user.sub }, orderBy: { serverTime: 'desc' } });
-  if (last && last.action === p.data.action && Date.now() - +last.serverTime < 60_000)
+  if (last && last.action === p.data.action && Math.abs(+punchAt - +last.serverTime) < 60_000)
     return { ok: true, action: last.action, time: last.serverTime, duplicate: true };
 
   // NOT: gerçek güvenlik dilimi — imzalı QR token doğrulaması burada eklenecek.
-  const punch = await prisma.punch.create({ data: {
-    employeeId: req.user.sub, branchId: p.data.branchId, deviceId, action: p.data.action, source: 'qr',
-  } });
+  let punch;
+  try {
+    punch = await prisma.punch.create({ data: {
+      employeeId: req.user.sub, branchId: p.data.branchId, deviceId, action: p.data.action,
+      source, serverTime: punchAt, clientId: p.data.clientId ?? null,
+    } });
+  } catch (e: any) {
+    // clientId benzersiz çakışması (yarış: aynı kuyruk kaydı iki kez) → çift kayıt sayma
+    if (p.data.clientId && String(e?.code) === 'P2002') {
+      const dup = await prisma.punch.findUnique({ where: { clientId: p.data.clientId } });
+      if (dup) return { ok: true, action: dup.action, time: dup.serverTime, duplicate: true };
+    }
+    throw e;
+  }
   return { ok: true, action: punch.action, time: punch.serverTime };
 });
 
