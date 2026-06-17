@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Icon } from '../icons'
 import { api, type EvalDetail, type EvalCrit } from '../api'
 import { consumeNavArg, goto } from '../nav'
-import { Avatar, Stars, ScoreBadge, StatusChip, scoreBand, Field } from '../ui'
+import { Avatar, Stars, StatusChip, scoreBand, toStars, Field } from '../ui'
 
 const PAGE_MAX = 820
 
@@ -78,13 +78,14 @@ export function EvaluationDetail() {
             <div className="t-cap ink-3" style={{ marginTop: 3 }}>{d.employee.branch || '—'}{d.employee.dept ? ` · ${d.employee.dept}` : ''} · SİCİL {d.employee.sicil || '—'}</div>
           </div>
         </div>
-        <div className="card" style={{ padding: '14px 18px', minWidth: 220, flex: 'none' }}>
+        <div className="card" style={{ padding: '14px 18px', minWidth: 240, flex: 'none' }}>
           <div className="t-mono-label ink-3" style={{ marginBottom: 8 }}>GENEL SKOR</div>
-          <div className="rowx gap10" style={{ alignItems: 'baseline' }}>
-            <span className="tnum" style={{ fontSize: 32, fontWeight: 800, lineHeight: 1, color: band ? `var(--${band.tone})` : 'var(--ink-3)' }}>{overall ?? '—'}</span>
+          <div className="rowx gap8" style={{ alignItems: 'baseline' }}>
+            <span className="tnum" style={{ fontSize: 32, fontWeight: 800, lineHeight: 1, color: band ? `var(--${band.tone})` : 'var(--ink-3)' }}>{toStars(overall) ?? '—'}</span>
+            <span className="t-sm ink-3">/ 5</span>
             {band && <StatusChip status={band.tone}>{band.label}</StatusChip>}
           </div>
-          <div style={{ marginTop: 10 }}><ScoreBadge score={overall} width={180} /></div>
+          {overall != null && <div style={{ marginTop: 10 }}><Stars value={toStars(overall)!} readOnly size={22} /></div>}
         </div>
       </div>
 
@@ -123,7 +124,10 @@ export function EvaluationDetail() {
               </div>
               <div className="t-cap ink-3" style={{ marginTop: 4 }}>{d.year} yılı puantajından üretildi — elle değiştirilemez.</div>
             </div>
-            <div style={{ minWidth: 200 }}><ScoreBadge score={d.auto.score} width={170} /></div>
+            <div className="rowx gap10" style={{ alignItems: 'center', flex: 'none' }}>
+              <Stars value={toStars(d.auto.score)!} readOnly size={22} />
+              <span className="t-sm mono ink-2" style={{ width: 34, textAlign: 'right' }}>{toStars(d.auto.score)}/5</span>
+            </div>
           </div>
           <div className="rowx gap8" style={{ flexWrap: 'wrap', paddingTop: 4 }}>
             {Object.entries(d.auto.breakdown).map(([k, v]) => (

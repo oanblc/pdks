@@ -125,18 +125,40 @@ export function ScoreBadge({ score, width = 110 }: { score: number | null; width
   )
 }
 
-// 1–5 yıldız puanı (tıklanabilir; readOnly modu salt-okunur)
+// 0–100 skoru 5 yıldıza çevir (tek ondalık)
+export const toStars = (score: number | null): number | null => score == null ? null : Math.round((score / 20) * 10) / 10
+
+// 1–5 yıldız. Tıklanabilir mod tam yıldız; readOnly mod kesirli (otomatik skoru göstermek için).
 export function Stars({ value, onChange, size = 26, readOnly = false }:
   { value: number; onChange?: (v: number) => void; size?: number; readOnly?: boolean }) {
+  if (readOnly) {
+    return (
+      <div className="rowx" style={{ gap: 3 }}>
+        {[1, 2, 3, 4, 5].map(n => {
+          const frac = Math.max(0, Math.min(1, value - (n - 1)))
+          return (
+            <span key={n} style={{ position: 'relative', display: 'inline-flex', lineHeight: 0, padding: 2 }}>
+              <Icon name="star" size={size} strokeWidth={1.6} color="var(--border-strong)" fill="none" />
+              {frac > 0 && (
+                <span style={{ position: 'absolute', left: 2, top: 2, width: `${frac * 100}%`, overflow: 'hidden', display: 'inline-flex', lineHeight: 0 }}>
+                  <Icon name="star" size={size} strokeWidth={1.6} color="var(--warn)" fill="var(--warn)" style={{ flexShrink: 0 }} />
+                </span>
+              )}
+            </span>
+          )
+        })}
+      </div>
+    )
+  }
   return (
     <div className="rowx" style={{ gap: 3 }}>
       {[1, 2, 3, 4, 5].map(n => {
         const on = n <= value
         return (
-          <button key={n} type="button" disabled={readOnly}
+          <button key={n} type="button"
             onClick={() => onChange?.(n === value ? 0 : n)}
             title={`${n} / 5`}
-            style={{ background: 'transparent', border: 'none', padding: 2, cursor: readOnly ? 'default' : 'pointer', lineHeight: 0, display: 'inline-flex' }}>
+            style={{ background: 'transparent', border: 'none', padding: 2, cursor: 'pointer', lineHeight: 0, display: 'inline-flex' }}>
             <Icon name="star" size={size} strokeWidth={1.6}
               color={on ? 'var(--warn)' : 'var(--border-strong)'}
               fill={on ? 'var(--warn)' : 'none'} />

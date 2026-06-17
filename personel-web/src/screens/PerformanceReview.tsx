@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Icon } from '../icons'
 import { api, type EvalRow, type EvalCrit } from '../api'
 import { goto } from '../nav'
-import { PageHead, StatCard, Table, Row, Avatar, ScoreBadge, StatusChip, scoreBand, Pill, Modal, type Tone } from '../ui'
+import { PageHead, StatCard, Table, Row, Avatar, Stars, toStars, StatusChip, scoreBand, Pill, Modal, type Tone } from '../ui'
 
 const statusChip: Record<string, [Tone, string]> = { published: ['ok', 'Yayınlandı'], draft: ['warn', 'Taslak'], none: ['neu', 'Değerlendirilmedi'] }
 
@@ -41,7 +41,7 @@ export function PerformanceReview() {
       </div>
 
       <div className="rowx gap14" style={{ marginBottom: 18 }}>
-        <StatCard label="Ortalama skor" value={avg} sub={scoreBand(avg).label} tone={scoreBand(avg).tone} icon="star" />
+        <StatCard label="Ortalama skor" value={`${toStars(avg)}`} sub={`5 üzerinden · ${scoreBand(avg).label}`} tone={scoreBand(avg).tone} icon="star" />
         <StatCard label="Değerlendirilen" value={`${evaluated} / ${total}`} sub="çalışan" icon="user" />
         <StatCard label="Yayınlanan" value={published} sub="tamamlandı" tone="ok" icon="check" />
         <StatCard label="Taslak" value={draft} sub="devam ediyor" tone="warn" icon="edit" />
@@ -50,16 +50,16 @@ export function PerformanceReview() {
       {loading ? <div className="t-body ink-2">Yükleniyor…</div> : (
         <>
           <div className="t-h3" style={{ marginBottom: 12 }}>Çalışan karneleri <span className="t-cap ink-3">· satıra tıkla, değerlendirmeyi aç</span></div>
-          <Table cols={[{ label: 'ÇALIŞAN', flex: 2 }, { label: 'GENEL SKOR', w: 150 }, { label: 'BAND', flex: 0.9 }, { label: 'DEVAM (OTO)', w: 100, align: 'right' }, { label: 'DURUM', flex: 1, align: 'right' }]}>
+          <Table cols={[{ label: 'ÇALIŞAN', flex: 2 }, { label: 'GENEL SKOR', w: 170 }, { label: 'BAND', flex: 0.9 }, { label: 'DEVAM (OTO)', w: 110, align: 'right' }, { label: 'DURUM', flex: 1, align: 'right' }]}>
             {rows.map((e, i) => {
               const band = e.overall != null ? scoreBand(e.overall) : null
               const ch = statusChip[e.status] ?? statusChip.none
               return (
                 <Row key={e.empId} i={i} onClick={() => goto('evaluationDetail', { empId: e.empId, name: e.name, year })} cells={[
                   { flex: 2, node: <div className="rowx gap12"><Avatar name={e.name} src={e.avatar || undefined} size={36} /><div><div className="t-bodys" style={{ fontSize: 14.5 }}>{e.name}</div><div className="t-cap ink-3">{e.branch || '—'}{e.dept ? ` · ${e.dept}` : ''}</div></div></div> },
-                  { w: 150, node: <ScoreBadge score={e.overall} /> },
+                  { w: 170, node: e.overall != null ? <div className="rowx gap8" style={{ alignItems: 'center' }}><Stars value={toStars(e.overall)!} readOnly size={16} /><span className="t-cap mono ink-2" style={{ fontWeight: 700 }}>{toStars(e.overall)}</span></div> : <span className="t-sm ink-3">—</span> },
                   { flex: 0.9, node: band ? <StatusChip status={band.tone}>{band.label}</StatusChip> : <span className="t-sm ink-3">—</span> },
-                  { w: 100, align: 'right', node: <span className="t-sm mono ink-2">{e.autoScore}</span> },
+                  { w: 110, align: 'right', node: <span className="t-sm mono ink-2">{toStars(e.autoScore)}/5</span> },
                   { flex: 1, align: 'right', node: <StatusChip status={ch[0]}>{ch[1]}</StatusChip> },
                 ]} />
               )
