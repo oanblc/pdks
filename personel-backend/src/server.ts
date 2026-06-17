@@ -824,6 +824,7 @@ async function assertFk(reply: any, branchId?: number | null, shiftId?: number |
 app.post('/api/employees', { preHandler: requireAdmin }, async (req: any, reply) => {
   const p = z.object({ name: z.string().min(2), tc: z.string().regex(/^\d{11}$/), dept: z.string().optional(), role: z.string().optional(), branchId: z.number().int().optional(), shiftId: z.number().int().optional(), annualLeaveDays: z.number().int().min(0).max(60).optional(), startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'İşe giriş tarihi YYYY-AA-GG olmalı').optional(), password: z.string().min(8, 'Şifre en az 8 karakter olmalı') }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  if (!isValidTC(p.data.tc)) return bad(reply, 'Geçersiz TC kimlik numarası');
   if (!(await assertFk(reply, p.data.branchId, p.data.shiftId))) return;
   if (await prisma.employee.findUnique({ where: { tc: p.data.tc } })) return bad(reply, 'Bu TC ile kayıt zaten var');
   const emp = await prisma.employee.create({ data: { name: p.data.name, tc: p.data.tc, dept: p.data.dept, role: p.data.role, branchId: p.data.branchId ?? null, shiftId: p.data.shiftId ?? null, annualLeaveDays: p.data.annualLeaveDays ?? 14, startDate: p.data.startDate ? new Date(p.data.startDate + 'T12:00:00Z') : null, passwordHash: await bcrypt.hash(p.data.password, 10), status: 'active', sicil: await nextSicil() } });
@@ -906,10 +907,10 @@ app.post('/api/employee/forgot', { config: { rateLimit: { max: 5, timeWindow: '1
 
 /* ───────── ŞUBE / CİHAZ / VARDİYA YÖNETİMİ (admin) ───────── */
 app.post('/api/branches', { preHandler: requireAdmin }, async (req: any, reply) => {
-  const p = z.object({ name: z.string().min(2), city: z.string().optional(), username: z.string().min(3), password: z.string().min(8, 'Şifre en az 8 karakter olmalı'), managerPin: z.string().regex(/^\d{4,8}$/).optional() }).safeParse(req.body);
+  const p = z.object({ name: z.string().min(2), city: z.string().optional(), username: z.string().min(3), password: z.string().min(8, 'Şifre en az 8 karakter olmalı') }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   if (await prisma.branch.findUnique({ where: { username: p.data.username } })) return bad(reply, 'Bu kullanıcı adı kullanılıyor');
-  const br = await prisma.branch.create({ data: { name: p.data.name, city: p.data.city, username: p.data.username, passwordHash: await bcrypt.hash(p.data.password, 10), managerPin: await bcrypt.hash(p.data.managerPin || '1234', 10) } });
+  const br = await prisma.branch.create({ data: { name: p.data.name, city: p.data.city, username: p.data.username, passwordHash: await bcrypt.hash(p.data.password, 10) } });
   const n = await prisma.device.count();
   await prisma.device.create({ data: { branchId: br.id, code: `TBL-${String(300 + (n * 17) % 9600).padStart(4, '0')}` } });
   await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Şube eklendi', detail: br.name } });

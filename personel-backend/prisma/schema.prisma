@@ -29,7 +29,6 @@ model Branch {
   workingDays  String     @default("[1,2,3,4,5,6]") // haftalık açık günler (getDay(): Paz=0..Cmt=6); varsayılan Pzt–Cmt
   username     String?    @unique
   passwordHash String?
-  managerPin   String?    // kiosk müdür PIN'i (hash'siz, demo)
   employees    Employee[]
   punches      Punch[]
   devices      Device[]
