@@ -1320,6 +1320,140 @@ app.put('/api/risk-settings', { preHandler: requireAdmin }, async (req: any, rep
   return { ok: true, config: cfg };
 });
 
+/* ───────── PERFORMANS DEĞERLENDİRMESİ (yıllık) ───────── */
+// Kriter şablonu — org geneli, özelleştirilebilir. risk-config deseninin aynısı (Setting'te JSON).
+type EvalCrit = { id: string; label: string; hint?: string; category?: string; weight: number; kind: 'manual' | 'auto' };
+const DEFAULT_EVAL_CRITERIA: EvalCrit[] = [
+  { id: 'kilik', label: 'Kılık-kıyafet & temsil', hint: 'Görünüm, üniforma, genel temsil', category: 'Davranış', weight: 1, kind: 'manual' },
+  { id: 'iletisim', label: 'Müşteri iletişimi', hint: 'Nezaket, çözüm odaklılık, iletişim becerisi', category: 'Davranış', weight: 2, kind: 'manual' },
+  { id: 'ekip', label: 'Ekip çalışması', hint: 'Uyum, yardımlaşma, bilgi paylaşımı', category: 'Davranış', weight: 1, kind: 'manual' },
+  { id: 'kalite', label: 'İş kalitesi & titizlik', hint: 'Doğruluk, özen, standartlara uyum', category: 'İş', weight: 2, kind: 'manual' },
+  { id: 'uyum', label: 'Kurallara uyum', hint: 'Prosedür, güvenlik ve disipline uyum', category: 'İş', weight: 1, kind: 'manual' },
+  { id: 'devam', label: 'Devam & dakiklik', hint: 'Puantajdan otomatik (geç giriş / eksik çıkış / bayraklı kayıt)', category: 'Devam', weight: 2, kind: 'auto' },
+];
+async function getEvalCriteria(): Promise<EvalCrit[]> {
+  const row = await prisma.setting.findUnique({ where: { key: 'eval-criteria' } });
+  if (!row) return DEFAULT_EVAL_CRITERIA;
+  try { const v = JSON.parse(row.value); return Array.isArray(v) && v.length ? v : DEFAULT_EVAL_CRITERIA; }
+  catch { return DEFAULT_EVAL_CRITERIA; }
+}
+const evalSafeScores = (s: any): Record<string, number> => { try { const v = JSON.parse(s); return v && typeof v === 'object' ? v : {}; } catch { return {}; } };
+const clampYear = (y: any): number => { const n = parseInt(y, 10); const cur = new Date().getFullYear(); return Number.isFinite(n) ? Math.max(2000, Math.min(cur + 1, n)) : cur; };
+
+// Otomatik "Devam & dakiklik" skoru (0–100) — o yılın puantajından, yıllık ceza ağırlıklarıyla.
+const ATT_PEN = { flagged: 8, missing: 4, late: 1.5, manual: 1 } as const;
+async function attendanceScore(emp: any, year: number): Promise<{ score: number; breakdown: Record<string, number> }> {
+  const start = new Date(year, 0, 1), end = new Date(year + 1, 0, 1);
+  const cfg = await getRiskCfg();
+  const punches = await prisma.punch.findMany({ where: { employeeId: emp.id, serverTime: { gte: start, lt: end } }, orderBy: { serverTime: 'asc' } });
+  const days = dailyRecords(punches, shiftOpts(emp.shift));
+  const startMin = emp.shift ? toMin(emp.shift.start) : 540;
+  const b = { flagged: 0, missing: 0, late: 0, manual: 0 };
+  for (const r of days) {
+    if (r.flagged) b.flagged++;
+    if (r.status === 'missing' && !r.inProgress) b.missing++;
+    if (r.in && toMin(r.in) > startMin + cfg.lateToleranceMin) b.late++;
+  }
+  b.manual = punches.filter(p => p.source === 'manual').length;
+  const penalty = b.flagged * ATT_PEN.flagged + b.missing * ATT_PEN.missing + b.late * ATT_PEN.late + b.manual * ATT_PEN.manual;
+  return { score: Math.max(0, Math.round(100 - Math.min(100, penalty))), breakdown: b };
+}
+
+// Genel skor = Σ(ağırlık × kriterPuanı₀₋₁₀₀) / Σağırlık. Yıldız 1–5 → ((r-1)/4)*100; auto zaten 0–100.
+function evalOverall(scores: Record<string, number>, criteria: EvalCrit[], autoScore: number): number | null {
+  let wsum = 0, vsum = 0;
+  for (const c of criteria) {
+    let v: number | null = null;
+    if (c.kind === 'auto') v = autoScore;
+    else { const r = Number(scores?.[c.id]); if (r >= 1 && r <= 5) v = ((r - 1) / 4) * 100; }
+    if (v == null) continue;
+    const w = Number(c.weight) || 0; if (w <= 0) continue;
+    wsum += w; vsum += w * v;
+  }
+  return wsum > 0 ? Math.round(vsum / wsum) : null;
+}
+
+app.get('/api/eval-criteria', { preHandler: requireAdmin }, async () => {
+  return { criteria: await getEvalCriteria(), defaults: DEFAULT_EVAL_CRITERIA };
+});
+
+app.put('/api/eval-criteria', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({
+    criteria: z.array(z.object({
+      id: z.string().min(1).max(40).regex(/^[a-z0-9_-]+$/i, 'id yalnız harf/rakam/-/_ içerebilir'),
+      label: z.string().min(1).max(80),
+      hint: z.string().max(160).optional(),
+      category: z.string().max(40).optional(),
+      weight: z.number().min(0).max(20),
+      kind: z.enum(['manual', 'auto']),
+    })).min(1).max(30),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz kriterler');
+  if (!p.data.criteria.some(c => c.kind === 'auto')) return bad(reply, 'En az bir otomatik (devam) kriteri olmalı');
+  const ids = new Set<string>();
+  for (const c of p.data.criteria) { if (ids.has(c.id)) return bad(reply, 'Kriter kimliği tekrar ediyor: ' + c.id); ids.add(c.id); }
+  await prisma.setting.upsert({ where: { key: 'eval-criteria' }, create: { key: 'eval-criteria', value: JSON.stringify(p.data.criteria) }, update: { value: JSON.stringify(p.data.criteria) } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'performans', action: 'Performans kriterleri güncellendi', detail: `${p.data.criteria.length} kriter` } });
+  return { ok: true, criteria: p.data.criteria };
+});
+
+app.get('/api/evaluations', { preHandler: requireAdmin }, async (req: any) => {
+  const year = clampYear(req.query?.year);
+  const criteria = await getEvalCriteria();
+  const emps = await prisma.employee.findMany({ where: { status: 'active' }, include: { branch: true, shift: true }, orderBy: { name: 'asc' } });
+  const rows = await prisma.evaluation.findMany({ where: { year } });
+  const byEmp = new Map(rows.map(r => [r.employeeId, r]));
+  const employees: any[] = [];
+  for (const emp of emps) {
+    const auto = await attendanceScore(emp, year);
+    const ev = byEmp.get(emp.id);
+    const scores = ev ? evalSafeScores(ev.scores) : {};
+    employees.push({
+      empId: emp.id, name: emp.name, branch: emp.branch?.name ?? null, dept: emp.dept, avatar: emp.avatar ?? null,
+      autoScore: auto.score, overall: evalOverall(scores, criteria, auto.score), status: ev ? ev.status : 'none',
+    });
+  }
+  return { year, criteria, employees };
+});
+
+app.get('/api/employees/:id/evaluation', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const year = clampYear(req.query?.year);
+  const emp = await prisma.employee.findUnique({ where: { id }, include: { branch: true, shift: true } });
+  if (!emp) return reply.code(404).send({ error: 'Çalışan bulunamadı' });
+  const criteria = await getEvalCriteria();
+  const ev = await prisma.evaluation.findUnique({ where: { employeeId_year: { employeeId: id, year } } });
+  const scores = ev ? evalSafeScores(ev.scores) : {};
+  const auto = await attendanceScore(emp, year);
+  return {
+    year,
+    employee: { id: emp.id, name: emp.name, branch: emp.branch?.name ?? null, dept: emp.dept, sicil: emp.sicil, avatar: emp.avatar ?? null },
+    criteria, scores, note: ev?.note ?? null, status: ev ? ev.status : 'none', updatedAt: ev?.updatedAt ?? null,
+    auto, overall: evalOverall(scores, criteria, auto.score),
+  };
+});
+
+app.put('/api/employees/:id/evaluation', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const emp = await prisma.employee.findUnique({ where: { id } });
+  if (!emp) return reply.code(404).send({ error: 'Çalışan bulunamadı' });
+  const p = z.object({
+    year: z.number().int().min(2000).max(2100),
+    scores: z.record(z.string(), z.number().int().min(1).max(5)),
+    note: z.string().max(2000).optional().nullable(),
+    status: z.enum(['draft', 'published']),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz değerlendirme');
+  const data = { scores: JSON.stringify(p.data.scores), note: p.data.note?.trim() || null, status: p.data.status, evaluator: req.user.role || 'admin' };
+  await prisma.evaluation.upsert({
+    where: { employeeId_year: { employeeId: id, year: p.data.year } },
+    create: { employeeId: id, year: p.data.year, ...data },
+    update: data,
+  });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'performans', action: p.data.status === 'published' ? 'Performans karnesi yayınlandı' : 'Performans karnesi kaydedildi', detail: `${emp.name} · ${p.data.year}` } });
+  return { ok: true };
+});
+
 /* ───────── BORDRO ───────── */
 app.get('/api/payroll', { preHandler: requireAdmin }, async () => {
   const month = currentMonth();

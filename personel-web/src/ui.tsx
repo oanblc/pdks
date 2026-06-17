@@ -108,6 +108,45 @@ export function Pill({ children, onClick, active }: { children: React.ReactNode;
   )
 }
 
+// Performans skor bandı (yüksek = iyi) — RiskBadge'in tersi renk mantığı
+export const scoreBand = (s: number): { tone: Tone; label: string } =>
+  s >= 85 ? { tone: 'ok', label: 'Üstün' } : s >= 70 ? { tone: 'brand', label: 'İyi' } : s >= 50 ? { tone: 'warn', label: 'Orta' } : { tone: 'err', label: 'Gelişmeli' }
+
+export function ScoreBadge({ score, width = 110 }: { score: number | null; width?: number }) {
+  if (score == null) return <span className="t-cap ink-4">—</span>
+  const { tone } = scoreBand(score)
+  return (
+    <div className="rowx gap8" style={{ minWidth: width }}>
+      <div style={{ flex: 1, height: 7, borderRadius: 4, background: 'var(--surface-3)', overflow: 'hidden' }}>
+        <div style={{ width: `${score}%`, height: '100%', background: `var(--${tone})`, borderRadius: 4 }} />
+      </div>
+      <span className="t-cap mono tnum" style={{ color: `var(--${tone}-ink)`, fontWeight: 700 }}>{score}</span>
+    </div>
+  )
+}
+
+// 1–5 yıldız puanı (tıklanabilir; readOnly modu salt-okunur)
+export function Stars({ value, onChange, size = 26, readOnly = false }:
+  { value: number; onChange?: (v: number) => void; size?: number; readOnly?: boolean }) {
+  return (
+    <div className="rowx" style={{ gap: 3 }}>
+      {[1, 2, 3, 4, 5].map(n => {
+        const on = n <= value
+        return (
+          <button key={n} type="button" disabled={readOnly}
+            onClick={() => onChange?.(n === value ? 0 : n)}
+            title={`${n} / 5`}
+            style={{ background: 'transparent', border: 'none', padding: 2, cursor: readOnly ? 'default' : 'pointer', lineHeight: 0, display: 'inline-flex' }}>
+            <Icon name="star" size={size} strokeWidth={1.6}
+              color={on ? 'var(--warn)' : 'var(--border-strong)'}
+              fill={on ? 'var(--warn)' : 'none'} />
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function RiskBadge({ score }: { score: number }) {
   const tone = score >= 75 ? 'err' : score >= 50 ? 'warn' : 'neu'
   return (

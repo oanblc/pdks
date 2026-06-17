@@ -102,4 +102,25 @@ export const api = {
   importHolidays: (year: number) => req('/api/holidays/import', { method: 'POST', body: JSON.stringify({ year }) }),
   dsarDone: (id: number) => req(`/api/data-requests/${id}/done`, { method: 'POST' }),
   dsarDetail: (id: number) => req(`/api/data-requests/${id}`),
+  // Performans değerlendirmesi (yıllık)
+  evalCriteria: () => req('/api/eval-criteria') as Promise<{ criteria: EvalCrit[]; defaults: EvalCrit[] }>,
+  updateEvalCriteria: (criteria: EvalCrit[]) => req('/api/eval-criteria', { method: 'PUT', body: JSON.stringify({ criteria }) }) as Promise<{ ok: boolean; criteria: EvalCrit[] }>,
+  evaluations: (year: number) => req(`/api/evaluations?year=${year}`) as Promise<{ year: number; criteria: EvalCrit[]; employees: EvalRow[] }>,
+  employeeEvaluation: (id: number, year: number) => req(`/api/employees/${id}/evaluation?year=${year}`) as Promise<EvalDetail>,
+  saveEvaluation: (id: number, body: { year: number; scores: Record<string, number>; note?: string | null; status: 'draft' | 'published' }) =>
+    req(`/api/employees/${id}/evaluation`, { method: 'PUT', body: JSON.stringify(body) }) as Promise<{ ok: boolean }>,
+}
+
+export type EvalCrit = { id: string; label: string; hint?: string; category?: string; weight: number; kind: 'manual' | 'auto' }
+export type EvalRow = { empId: number; name: string; branch: string | null; dept: string | null; avatar: string | null; autoScore: number; overall: number | null; status: 'none' | 'draft' | 'published' }
+export type EvalDetail = {
+  year: number
+  employee: { id: number; name: string; branch: string | null; dept: string | null; sicil: string | null; avatar: string | null }
+  criteria: EvalCrit[]
+  scores: Record<string, number>
+  note: string | null
+  status: 'none' | 'draft' | 'published'
+  updatedAt: string | null
+  auto: { score: number; breakdown: Record<string, number> }
+  overall: number | null
 }

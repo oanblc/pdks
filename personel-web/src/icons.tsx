@@ -30,6 +30,7 @@ export const ICON_PATHS: Record<string, string> = {
   edit: 'M16.5 4.5 19.5 7.5 9 18l-4 1 1-4 10.5-10.5ZM14.5 6.5l3 3',
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM21 21l-4-4',
   dots: 'M5 12h.01M12 12h.01M19 12h.01',
+  star: 'M12 3.5l2.6 5.3 5.9.85-4.25 4.15 1 5.85L12 17l-5.25 2.75 1-5.85L3.5 9.65l5.9-.85z',
 }
 
 export function Icon({ name, size = 24, color = 'currentColor', strokeWidth = 1.8, fill = 'none', style }:

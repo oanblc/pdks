@@ -84,7 +84,25 @@ model Employee {
   requests     Request[]
   consents     ConsentRecord[]
   dataRequests DataRequest[]
+  evaluations  Evaluation[]
   createdAt    DateTime        @default(now())
+}
+
+// Yıllık performans karnesi (çalışan × yıl) — elle öznel yıldız puanları + otomatik devam skoru
+model Evaluation {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  year       Int
+  scores     String   @default("{}") // JSON: { "<critId>": 1..5 } (elle, öznel)
+  note       String? // genel yorum
+  status     String   @default("draft") // draft | published
+  evaluator  String? // actor (audit)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([employeeId, year])
+  @@index([year])
 }
 
 model ConsentRecord {

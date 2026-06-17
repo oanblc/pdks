@@ -20,6 +20,8 @@ import { RiskScore } from './screens/RiskScore'
 import { RiskSettings } from './screens/RiskSettings'
 import { Kvkk } from './screens/Kvkk'
 import { Reports } from './screens/Reports'
+import { PerformanceReview } from './screens/PerformanceReview'
+import { EvaluationDetail } from './screens/EvaluationDetail'
 import { Stub } from './screens/Stub'
 
 export type Role = 'ik' | 'mu' | 'su'
@@ -38,6 +40,9 @@ const NAV: { group: string; items: NavItem[] }[] = [
     { id: 'timesheet', label: 'Puantaj & Mesai', icon: 'calendar', roles: ['ik', 'mu', 'su'] },
     { id: 'approvals', label: 'Talep Onayları', icon: 'inbox', roles: ['ik', 'su'] },
   ] },
+  { group: 'Performans', items: [
+    { id: 'performance', label: 'Performans', icon: 'star', roles: ['ik', 'su'] },
+  ] },
   { group: 'Güvenlik', items: [
     { id: 'anomaly', label: 'Güvenlik', icon: 'shield', roles: ['ik', 'su'] },
     { id: 'risk', label: 'Risk Skoru', icon: 'alert', roles: ['ik', 'su'] },
@@ -53,6 +58,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
 const SCREENS: Record<string, () => React.ReactElement> = {
   dashboard: Dashboard, employees: Employees, employeeDetail: EmployeeDetail, branches: Branches, approvals: Approvals, audit: Audit,
   shifts: Shifts, holidays: Holidays, timesheet: Timesheet, anomaly: Anomaly, risk: RiskScore, risksettings: RiskSettings, kvkk: Kvkk, reports: Reports,
+  performance: PerformanceReview, evaluationDetail: EvaluationDetail,
 }
 
 export function App() {
@@ -112,7 +118,7 @@ export function App() {
                 <div className="sb-section">{g.group}</div>
                 <div className="col" style={{ gap: 2 }}>
                   {items.map(it => {
-                    const on = route === it.id || (it.id === 'employees' && route === 'employeeDetail')
+                    const on = route === it.id || (it.id === 'employees' && route === 'employeeDetail') || (it.id === 'performance' && route === 'evaluationDetail')
                     return (
                       <button key={it.id} onClick={() => setRoute(it.id)} className={'sb-item' + (on ? ' active' : '')}>
                         <Icon name={it.icon} size={18} strokeWidth={1.8} />
