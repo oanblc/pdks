@@ -109,6 +109,20 @@ export const api = {
   employeeEvaluation: (id: number, year: number) => req(`/api/employees/${id}/evaluation?year=${year}`) as Promise<EvalDetail>,
   saveEvaluation: (id: number, body: { year: number; scores: Record<string, number>; note?: string | null; status: 'draft' | 'published' }) =>
     req(`/api/employees/${id}/evaluation`, { method: 'PUT', body: JSON.stringify(body) }) as Promise<{ ok: boolean }>,
+  // Değerlendirme dönemleri (kiosk yönetici akışı)
+  evalCampaigns: () => req('/api/eval-campaigns') as Promise<{ campaigns: EvalCampaign[] }>,
+  createEvalCampaign: (body: { name: string; year: number; startDate: string; endDate: string; branchIds: number[]; criteriaIds: string[] }) =>
+    req('/api/eval-campaigns', { method: 'POST', body: JSON.stringify(body) }) as Promise<{ ok: boolean; id: number }>,
+  updateEvalCampaign: (id: number, body: { status?: 'active' | 'closed'; name?: string }) =>
+    req(`/api/eval-campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(body) }) as Promise<{ ok: boolean }>,
+  deleteEvalCampaign: (id: number) => req(`/api/eval-campaigns/${id}`, { method: 'DELETE' }) as Promise<{ ok: boolean }>,
+}
+
+export type EvalCampaign = {
+  id: number; name: string; year: number; startDate: string; endDate: string
+  status: 'active' | 'closed'; active: boolean
+  branchIds: number[]; branches: string[]; criteriaIds: string[]; criteria: string[]
+  targetCount: number; submitted: number
 }
 
 export type EvalCrit = { id: string; label: string; hint?: string; category?: string; weight: number; kind: 'manual' | 'auto' }

@@ -1,11 +1,12 @@
 // PerformanceReview.tsx — Performans · yıllık değerlendirme listesi + kriter yönetimi
 import { useEffect, useState } from 'react'
 import { Icon } from '../icons'
-import { api, type EvalRow, type EvalCrit } from '../api'
+import { api, type EvalRow, type EvalCrit, type EvalCampaign } from '../api'
 import { goto } from '../nav'
-import { PageHead, StatCard, Table, Row, Avatar, Stars, toStars, StatusChip, scoreBand, Pill, Modal, type Tone } from '../ui'
+import { PageHead, StatCard, Table, Row, Avatar, Stars, toStars, StatusChip, scoreBand, Pill, Modal, Field, type Tone } from '../ui'
 
 const statusChip: Record<string, [Tone, string]> = { published: ['ok', 'Yayınlandı'], draft: ['warn', 'Taslak'], none: ['neu', 'Değerlendirilmedi'] }
+type Branch = { id: number; name: string }
 
 export function PerformanceReview() {
   const thisYear = new Date().getFullYear()
@@ -14,12 +15,20 @@ export function PerformanceReview() {
   const [criteria, setCriteria] = useState<EvalCrit[]>([])
   const [loading, setLoading] = useState(true)
   const [editCriteria, setEditCriteria] = useState(false)
+  const [campaigns, setCampaigns] = useState<EvalCampaign[]>([])
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [newCampaign, setNewCampaign] = useState(false)
 
   const load = (y: number) => {
     setLoading(true)
     api.evaluations(y).then(d => { setRows(d.employees); setCriteria(d.criteria); setLoading(false) }).catch(() => setLoading(false))
   }
+  const loadCampaigns = () => api.evalCampaigns().then(d => setCampaigns(d.campaigns)).catch(() => {})
   useEffect(() => { load(year) }, [year])
+  useEffect(() => { loadCampaigns(); api.branches().then((b: any) => setBranches(b)).catch(() => {}) }, [])
+
+  const closeCampaign = (id: number, status: 'active' | 'closed') => api.updateEvalCampaign(id, { status }).then(loadCampaigns)
+  const removeCampaign = (id: number) => { if (confirm('Bu dönem ve girilen yönetici puanları silinsin mi? (Yayınlanan karneler etkilenmez)')) api.deleteEvalCampaign(id).then(loadCampaigns) }
 
   const total = rows.length
   const evaluated = rows.filter(r => r.status !== 'none').length
@@ -33,6 +42,7 @@ export function PerformanceReview() {
         subtitle={`${year} yılı · yıldız puanları + puantajdan otomatik devam skoru`}
         actions={<>
           <button className="btn btn-ghost" style={{ height: 44 }} onClick={() => setEditCriteria(true)}><Icon name="edit" size={17} color="var(--ink)" /> Kriterleri düzenle</button>
+          <button className="btn btn-primary" style={{ height: 44 }} onClick={() => setNewCampaign(true)}><Icon name="plus" size={17} color="#fff" /> Dönem oluştur</button>
         </>} />
 
       <div className="rowx gap10" style={{ marginBottom: 16 }}>
@@ -46,6 +56,45 @@ export function PerformanceReview() {
         <StatCard label="Yayınlanan" value={published} sub="tamamlandı" tone="ok" icon="check" />
         <StatCard label="Taslak" value={draft} sub="devam ediyor" tone="warn" icon="edit" />
       </div>
+
+      {/* Değerlendirme dönemleri — yöneticinin kioskunda görünen, tarih aralıklı görevler */}
+      {campaigns.length > 0 && (
+        <div style={{ marginBottom: 22 }}>
+          <div className="t-h3" style={{ marginBottom: 12 }}>Değerlendirme dönemleri <span className="t-cap ink-3">· seçili tarihlerde şube yöneticisinin kioskunda görünür</span></div>
+          <div className="col" style={{ gap: 10 }}>
+            {campaigns.map(c => {
+              const pct = c.targetCount ? Math.round((c.submitted / c.targetCount) * 100) : 0
+              return (
+                <div key={c.id} className="card" style={{ padding: '14px 18px' }}>
+                  <div className="rowx between" style={{ gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="rowx gap10" style={{ alignItems: 'center' }}>
+                        <span className="t-bodys" style={{ fontSize: 15 }}>{c.name}</span>
+                        {c.status === 'closed' ? <StatusChip status="neu">Kapalı</StatusChip> : c.active ? <StatusChip status="ok">Aktif</StatusChip> : <StatusChip status="warn">Beklemede</StatusChip>}
+                      </div>
+                      <div className="t-cap ink-3" style={{ marginTop: 4 }}>
+                        {c.startDate} → {c.endDate} · {c.branches.join(', ') || '—'} · {c.criteria.length} kriter ({c.criteria.join(', ')})
+                      </div>
+                    </div>
+                    <div className="rowx gap8" style={{ flex: 'none' }}>
+                      {c.status === 'active'
+                        ? <button className="btn btn-ghost" style={{ height: 36 }} onClick={() => closeCampaign(c.id, 'closed')}>Kapat</button>
+                        : <button className="btn btn-ghost" style={{ height: 36 }} onClick={() => closeCampaign(c.id, 'active')}>Aç</button>}
+                      <button className="btn btn-ghost" style={{ height: 36, color: 'var(--err-ink)' }} onClick={() => removeCampaign(c.id)}><Icon name="x" size={15} color="var(--err-ink)" /></button>
+                    </div>
+                  </div>
+                  <div className="rowx gap10" style={{ alignItems: 'center', marginTop: 12 }}>
+                    <div style={{ flex: 1, height: 7, borderRadius: 4, background: 'var(--surface-3)', overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: 'var(--brand-600)', borderRadius: 4 }} />
+                    </div>
+                    <span className="t-cap mono ink-2" style={{ fontWeight: 700 }}>{c.submitted} / {c.targetCount} girildi</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {loading ? <div className="t-body ink-2">Yükleniyor…</div> : (
         <>
@@ -73,7 +122,72 @@ export function PerformanceReview() {
       )}
 
       {editCriteria && <CriteriaModal initial={criteria} onClose={() => setEditCriteria(false)} onDone={() => { setEditCriteria(false); load(year) }} />}
+      {newCampaign && <CampaignModal year={year} branches={branches} criteria={criteria.filter(c => c.kind === 'manual')} onClose={() => setNewCampaign(false)} onDone={() => { setNewCampaign(false); loadCampaigns() }} />}
     </div>
+  )
+}
+
+// ── Dönem oluşturma modalı ──
+function CampaignModal({ year, branches, criteria, onClose, onDone }:
+  { year: number; branches: Branch[]; criteria: EvalCrit[]; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [branchIds, setBranchIds] = useState<Set<number>>(new Set())
+  const [critIds, setCritIds] = useState<Set<string>>(new Set(criteria.map(c => c.id)))
+  const [err, setErr] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const toggle = <T,>(set: Set<T>, v: T, setter: (s: Set<T>) => void) => { const n = new Set(set); n.has(v) ? n.delete(v) : n.add(v); setter(n) }
+
+  const submit = async () => {
+    setErr(null)
+    if (name.trim().length < 2) return setErr('Dönem adı girin')
+    if (!startDate || !endDate) return setErr('Başlangıç ve bitiş tarihi seçin')
+    if (endDate < startDate) return setErr('Bitiş tarihi başlangıçtan önce olamaz')
+    if (branchIds.size === 0) return setErr('En az bir şube seçin')
+    if (critIds.size === 0) return setErr('En az bir kriter seçin')
+    setSaving(true)
+    try { await api.createEvalCampaign({ name: name.trim(), year, startDate, endDate, branchIds: [...branchIds], criteriaIds: [...critIds] }); onDone() }
+    catch (e: any) { setErr(e.message); setSaving(false) }
+  }
+
+  return (
+    <Modal title="Değerlendirme dönemi oluştur" width={560} onClose={onClose}
+      footer={<>
+        <button className="btn btn-ghost" style={{ height: 42 }} onClick={onClose}>Vazgeç</button>
+        <button className="btn btn-primary" style={{ height: 42, opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={submit}>{saving ? 'Oluşturuluyor…' : 'Dönemi başlat'}</button>
+      </>}>
+      {err && <div className="t-sm" style={{ color: 'var(--err-ink)', background: 'var(--err-bg)', padding: '10px 12px', borderRadius: 'var(--r-sm)' }}>{err}</div>}
+      <Field label="DÖNEM ADI"><input className="input" value={name} onChange={e => setName(e.target.value)} placeholder={`${year} 1. dönem değerlendirmesi`} /></Field>
+      <div className="rowx gap12">
+        <Field label="BAŞLANGIÇ"><input className="input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
+        <Field label="BİTİŞ"><input className="input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></Field>
+      </div>
+      <Field label="ŞUBELER (YÖNETİCİ KİOSKUNDA GÖRÜNECEK)">
+        <div className="col" style={{ gap: 6 }}>
+          {branches.map(b => (
+            <label key={b.id} className="rowx gap10" style={{ padding: '9px 12px', borderRadius: 'var(--r-sm)', background: branchIds.has(b.id) ? 'var(--brand-50)' : 'var(--surface-2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={branchIds.has(b.id)} onChange={() => toggle(branchIds, b.id, setBranchIds)} style={{ accentColor: 'var(--brand-600)' }} />
+              <span className="t-sm">{b.name}</span>
+            </label>
+          ))}
+          {branches.length === 0 && <span className="t-cap ink-3">Şube bulunamadı</span>}
+        </div>
+      </Field>
+      <Field label="KRİTERLER (YÖNETİCİYE GİDECEK)">
+        <div className="col" style={{ gap: 6 }}>
+          {criteria.map(c => (
+            <label key={c.id} className="rowx gap10" style={{ padding: '9px 12px', borderRadius: 'var(--r-sm)', background: critIds.has(c.id) ? 'var(--brand-50)' : 'var(--surface-2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={critIds.has(c.id)} onChange={() => toggle(critIds, c.id, setCritIds)} style={{ accentColor: 'var(--brand-600)' }} />
+              <span className="t-sm" style={{ flex: 1 }}>{c.label}</span>
+              <span className="t-cap ink-4 mono">ağırlık {c.weight}</span>
+            </label>
+          ))}
+        </div>
+      </Field>
+      <div className="t-cap ink-3" style={{ lineHeight: 1.5 }}>Otomatik "Devam & dakiklik" kriteri yöneticiye gönderilmez; karneye sistemden eklenir. Yöneticinin girdiği puanlar İK'ya <b>taslak</b> olarak düşer; yayınlamayı İK yapar.</div>
+    </Modal>
   )
 }
 

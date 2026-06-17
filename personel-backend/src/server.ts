@@ -1454,6 +1454,143 @@ app.put('/api/employees/:id/evaluation', { preHandler: requireAdmin }, async (re
   return { ok: true };
 });
 
+/* ───────── DEĞERLENDİRME DÖNEMLERİ (kiosk yönetici akışı) ───────── */
+const parseNumIds = (s: string): number[] => { try { const a = JSON.parse(s); return Array.isArray(a) ? a.filter((n: any) => Number.isInteger(n)) : []; } catch { return []; } };
+const parseStrIds = (s: string): string[] => { try { const a = JSON.parse(s); return Array.isArray(a) ? a.filter((x: any) => typeof x === 'string') : []; } catch { return []; } };
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const campaignActiveNow = (c: any, todayKey: string) => c.status === 'active' && c.startDate <= todayKey && todayKey <= c.endDate;
+
+// ── Admin: dönem yönetimi ──
+app.get('/api/eval-campaigns', { preHandler: requireAdmin }, async () => {
+  const today = dKey(new Date());
+  const campaigns = await prisma.evalCampaign.findMany({ orderBy: { createdAt: 'desc' } });
+  const criteria = await getEvalCriteria();
+  const branches = await prisma.branch.findMany();
+  const branchName = new Map(branches.map(b => [b.id, b.name]));
+  const out: any[] = [];
+  for (const c of campaigns) {
+    const branchIds = parseNumIds(c.branchIds);
+    const critIds = parseStrIds(c.criteriaIds);
+    const targetCount = await prisma.employee.count({ where: { status: 'active', branchId: { in: branchIds.length ? branchIds : [-1] } } });
+    const submitted = await prisma.evalCampaignEntry.count({ where: { campaignId: c.id } });
+    out.push({
+      id: c.id, name: c.name, year: c.year, startDate: c.startDate, endDate: c.endDate,
+      status: c.status, active: campaignActiveNow(c, today),
+      branchIds, branches: branchIds.map(id => branchName.get(id) ?? `#${id}`),
+      criteriaIds: critIds, criteria: critIds.map(id => criteria.find(k => k.id === id)?.label ?? id),
+      targetCount, submitted,
+    });
+  }
+  return { campaigns: out };
+});
+
+app.post('/api/eval-campaigns', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const criteria = await getEvalCriteria();
+  const manualIds = new Set(criteria.filter(c => c.kind === 'manual').map(c => c.id));
+  const p = z.object({
+    name: z.string().min(2).max(80),
+    year: z.number().int().min(2000).max(2100),
+    startDate: z.string().regex(DATE_RE),
+    endDate: z.string().regex(DATE_RE),
+    branchIds: z.array(z.number().int()).min(1),
+    criteriaIds: z.array(z.string()).min(1),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz dönem');
+  if (p.data.endDate < p.data.startDate) return bad(reply, 'Bitiş tarihi başlangıçtan önce olamaz');
+  const crit = p.data.criteriaIds.filter(id => manualIds.has(id));
+  if (!crit.length) return bad(reply, 'En az bir geçerli (öznel) kriter seçin');
+  const created = await prisma.evalCampaign.create({ data: {
+    name: p.data.name.trim(), year: p.data.year, startDate: p.data.startDate, endDate: p.data.endDate,
+    branchIds: JSON.stringify(p.data.branchIds), criteriaIds: JSON.stringify(crit), status: 'active',
+  } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'performans', action: 'Değerlendirme dönemi oluşturuldu', detail: `${created.name} · ${created.startDate}→${created.endDate}` } });
+  return { ok: true, id: created.id };
+});
+
+app.patch('/api/eval-campaigns/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const c = await prisma.evalCampaign.findUnique({ where: { id } });
+  if (!c) return reply.code(404).send({ error: 'Dönem bulunamadı' });
+  const p = z.object({ status: z.enum(['active', 'closed']).optional(), name: z.string().min(2).max(80).optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçersiz veri');
+  const data: any = {};
+  if (p.data.status) data.status = p.data.status;
+  if (p.data.name) data.name = p.data.name.trim();
+  await prisma.evalCampaign.update({ where: { id }, data });
+  if (p.data.status) await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'performans', action: p.data.status === 'closed' ? 'Değerlendirme dönemi kapatıldı' : 'Değerlendirme dönemi açıldı', detail: c.name } });
+  return { ok: true };
+});
+
+app.delete('/api/eval-campaigns/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const c = await prisma.evalCampaign.findUnique({ where: { id } });
+  if (!c) return reply.code(404).send({ error: 'Dönem bulunamadı' });
+  await prisma.evalCampaignEntry.deleteMany({ where: { campaignId: id } });
+  await prisma.evalCampaign.delete({ where: { id } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'performans', action: 'Değerlendirme dönemi silindi', detail: c.name } });
+  return { ok: true };
+});
+
+// ── Şube (kiosk) müdürü: aktif dönemler + çalışan başına puanlama ──
+app.get('/api/branch/eval-campaigns', { preHandler: requireBranch }, async (req: any) => {
+  const today = dKey(new Date());
+  const all = await prisma.evalCampaign.findMany({ where: { status: 'active' }, orderBy: { endDate: 'asc' } });
+  const mine = all.filter(c => campaignActiveNow(c, today) && parseNumIds(c.branchIds).includes(req.user.sub));
+  if (!mine.length) return { campaigns: [] };
+  const criteria = await getEvalCriteria();
+  const emps = await prisma.employee.findMany({ where: { branchId: req.user.sub, status: 'active' }, orderBy: { name: 'asc' } });
+  const out: any[] = [];
+  for (const c of mine) {
+    const critIds = parseStrIds(c.criteriaIds);
+    const crit = critIds.map(id => criteria.find(k => k.id === id)).filter(Boolean);
+    const entries = await prisma.evalCampaignEntry.findMany({ where: { campaignId: c.id } });
+    const byEmp = new Map(entries.map(e => [e.employeeId, e]));
+    out.push({
+      id: c.id, name: c.name, year: c.year, endDate: c.endDate, criteria: crit,
+      employees: emps.map(e => {
+        const ent = byEmp.get(e.id);
+        return { id: e.id, name: e.name, dept: e.dept, avatar: e.avatar ?? null, done: !!ent, scores: ent ? evalSafeScores(ent.scores) : {}, note: ent?.note ?? null };
+      }),
+    });
+  }
+  return { campaigns: out };
+});
+
+app.put('/api/branch/eval-campaigns/:id/employee/:empId', { preHandler: requireBranch }, async (req: any, reply) => {
+  const today = dKey(new Date());
+  const id = Number(req.params.id), empId = Number(req.params.empId);
+  const c = await prisma.evalCampaign.findUnique({ where: { id } });
+  if (!c) return reply.code(404).send({ error: 'Dönem bulunamadı' });
+  if (!campaignActiveNow(c, today) || !parseNumIds(c.branchIds).includes(req.user.sub)) return reply.code(403).send({ error: 'Bu dönem şu an bu şubede aktif değil' });
+  const emp = await prisma.employee.findUnique({ where: { id: empId } });
+  if (!emp || emp.branchId !== req.user.sub || emp.status !== 'active') return reply.code(404).send({ error: 'Çalışan bu şubede değil' });
+  const p = z.object({ scores: z.record(z.string(), z.number().int().min(1).max(5)), note: z.string().max(2000).optional().nullable() }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz puanlama');
+  // Yalnız bu dönemin kriterlerini kabul et
+  const allow = new Set(parseStrIds(c.criteriaIds));
+  const scores: Record<string, number> = {};
+  for (const [k, v] of Object.entries(p.data.scores)) if (allow.has(k)) scores[k] = v;
+  const note = p.data.note?.trim() || null;
+  // 1) Dönem kaydı (yönetici girdisi, ilerleme takibi)
+  await prisma.evalCampaignEntry.upsert({
+    where: { campaignId_employeeId: { campaignId: id, employeeId: empId } },
+    create: { campaignId: id, employeeId: empId, scores: JSON.stringify(scores), note, evaluator: 'Şube müdürü' },
+    update: { scores: JSON.stringify(scores), note, evaluator: 'Şube müdürü' },
+  });
+  // 2) Yıllık karneye taslak olarak birleştir (İK panelde görür, yayınlar)
+  const ev = await prisma.evaluation.findUnique({ where: { employeeId_year: { employeeId: empId, year: c.year } } });
+  const merged = { ...(ev ? evalSafeScores(ev.scores) : {}), ...scores };
+  const keepStatus = ev?.status === 'published' ? 'published' : 'draft';
+  const keepNote = ev?.note || note;
+  await prisma.evaluation.upsert({
+    where: { employeeId_year: { employeeId: empId, year: c.year } },
+    create: { employeeId: empId, year: c.year, scores: JSON.stringify(merged), note: keepNote, status: 'draft', evaluator: 'Şube müdürü' },
+    update: { scores: JSON.stringify(merged), note: keepNote, status: keepStatus, evaluator: 'Şube müdürü' },
+  });
+  await prisma.auditLog.create({ data: { actor: 'Şube müdürü', kind: 'performans', action: 'Yönetici performans değerlendirmesi (kiosk)', detail: `${emp.name} · ${c.name}` } });
+  return { ok: true };
+});
+
 /* ───────── BORDRO ───────── */
 app.get('/api/payroll', { preHandler: requireAdmin }, async () => {
   const month = currentMonth();

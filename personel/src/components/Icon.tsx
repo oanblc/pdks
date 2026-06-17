@@ -41,6 +41,7 @@ export const ICON_PATHS = {
   edit: 'M16.5 4.5 19.5 7.5 9 18l-4 1 1-4 10.5-10.5ZM14.5 6.5l3 3',
   backspace: 'M21 6H9.2a1.5 1.5 0 0 0-1.1.5L3 12l5.1 5.5a1.5 1.5 0 0 0 1.1.5H21a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 21 6ZM17.5 9.5l-4.5 5M13 9.5l4.5 5',
   grid: 'M4 4.5h6v6H4zM14 4.5h6v6h-6zM4 14.5h6v6H4zM14 14.5h6v6h-6z',
+  star: 'M12 3.5l2.6 5.3 5.9.85-4.25 4.15 1 5.85L12 17l-5.25 2.75 1-5.85L3.5 9.65l5.9-.85z',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

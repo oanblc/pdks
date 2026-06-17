@@ -89,8 +89,17 @@ export const api = {
       summary: { netMin: number; overtimeMin: number; present: number; missing: number };
     }>,
 
+  // Performans değerlendirme dönemleri (kiosk müdürü)
+  branchEvalCampaigns: () => req('/api/branch/eval-campaigns') as Promise<{ campaigns: BranchCampaign[] }>,
+  branchSubmitEval: (campaignId: number, empId: number, scores: Record<string, number>, note?: string) =>
+    req(`/api/branch/eval-campaigns/${campaignId}/employee/${empId}`, { method: 'PUT', body: JSON.stringify({ scores, ...(note ? { note } : {}) }) }) as Promise<{ ok: boolean }>,
+
   // KVKK veri talebi
   dataRequest: (type: 'access' | 'rectify' | 'erase', note?: string) =>
     req('/api/data-request', { method: 'POST', body: JSON.stringify({ type, note }) }) as Promise<{ ok: boolean }>,
   notifications: () => req('/api/notifications') as Promise<{ icon: string; tone: string; title: string; body: string; time: string }[]>,
 };
+
+export type EvalCriterion = { id: string; label: string; hint?: string; category?: string; weight: number; kind: string };
+export type BranchCampaignEmp = { id: number; name: string; dept: string | null; avatar: string | null; done: boolean; scores: Record<string, number>; note: string | null };
+export type BranchCampaign = { id: number; name: string; year: number; endDate: string; criteria: EvalCriterion[]; employees: BranchCampaignEmp[] };

@@ -7,7 +7,7 @@ import { Icon } from '../../components/Icon';
 import { T, StatusChip, Avatar, Button, TextArea, FieldLabel, styles as S } from '../../components/ui';
 import { PopIn } from '../../components/anim';
 import { HistoryScreen } from '../HistoryScreen';
-import { api } from '../../api';
+import { api, type BranchCampaign, type BranchCampaignEmp } from '../../api';
 
 const fmtKey = (s: string) => { const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : s; };
 
@@ -114,16 +114,23 @@ export function ManagerReview({ branch, onClose, onManual, onExitKiosk }:
   const [loading, setLoading] = useState(true);
   const [historyEmp, setHistoryEmp] = useState<{ id: number; name: string } | null>(null);
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<'arrivals' | 'requests'>('arrivals');
+  const [tab, setTab] = useState<'arrivals' | 'requests' | 'eval'>('arrivals');
   const [reqs, setReqs] = useState<{ id: number; name: string; dept: string | null; kind: 'leave' | 'fix'; type: string; detail: string | null; leaveStart?: string | null; leaveEnd?: string | null }[]>([]);
   const [reqBusy, setReqBusy] = useState<number | null>(null);
+  const [campaigns, setCampaigns] = useState<BranchCampaign[]>([]);
+  const [evalTarget, setEvalTarget] = useState<{ campaign: BranchCampaign; emp: BranchCampaignEmp } | null>(null);
 
   const load = () => api.branchToday().then(d => {
     setRows(d.map(r => ({ empId: r.empId, name: r.name, dept: r.dept, in: r.in, out: r.out, status: r.status, lastPunchId: r.lastPunchId, device: r.device, ui: r.reviewState === 'review' ? 'disputed' : r.reviewState === 'confirmed' ? 'approved' : 'pending' } as Arrival)));
     setLoading(false);
   }).catch(() => setLoading(false));
   const loadReqs = () => api.branchRequests().then(setReqs).catch(() => {});
-  useEffect(() => { load(); loadReqs(); }, []);
+  const loadCampaigns = () => api.branchEvalCampaigns().then(d => setCampaigns(d.campaigns)).catch(() => {});
+  useEffect(() => { load(); loadReqs(); loadCampaigns(); }, []);
+
+  const evalPending = campaigns.reduce((s, c) => s + c.employees.filter(e => !e.done).length, 0);
+  const tabs: ['arrivals' | 'requests' | 'eval', string, number][] = [['arrivals', 'Gelenler', rows.length], ['requests', 'Talepler', reqs.length]];
+  if (campaigns.length) tabs.push(['eval', 'Performans', evalPending]);
 
   const decideReq = async (id: number, decision: 'approve' | 'reject') => {
     setReqBusy(id);
@@ -170,9 +177,9 @@ export function ManagerReview({ branch, onClose, onManual, onExitKiosk }:
           ))}
         </View>
 
-        {/* Sekme: Gelenler / Talepler */}
+        {/* Sekme: Gelenler / Talepler / Performans */}
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-          {([['arrivals', 'Gelenler', rows.length], ['requests', 'Talepler', reqs.length]] as const).map(([k, label, n]) => (
+          {tabs.map(([k, label, n]) => (
             <Pressable key={k} onPress={() => setTab(k)} style={{ flex: 1, height: 42, borderRadius: R.md, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: tab === k ? C.brand600 : C.surface, borderColor: tab === k ? C.brand600 : C.border }}>
               <T v="sm" color={tab === k ? C.white : C.ink2} style={{ fontFamily: font.medium }}>{label}</T>
               {n > 0 && <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: tab === k ? 'rgba(255,255,255,0.25)' : C.surface3, alignItems: 'center', justifyContent: 'center' }}><T v="cap" mono color={tab === k ? C.white : C.ink2}>{n}</T></View>}
@@ -214,6 +221,35 @@ export function ManagerReview({ branch, onClose, onManual, onExitKiosk }:
                   </View>
                 );
               })}
+            </View>
+          )
+        ) : tab === 'eval' ? (
+          campaigns.length === 0 ? (
+            <View style={[S.cardFlat, { padding: 24, alignItems: 'center' }]}>
+              <Icon name="star" size={30} color={C.ink3} />
+              <T v="body" color={C.ink2} center style={{ marginTop: 10 }}>Aktif değerlendirme dönemi yok</T>
+            </View>
+          ) : (
+            <View style={{ gap: 18 }}>
+              {campaigns.map(c => (
+                <View key={c.id} style={{ gap: 10 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <T v="bodyS" style={{ fontSize: 15 }}>{c.name}</T>
+                    <T v="cap" color={C.ink3}>son gün {fmtKey(c.endDate)}</T>
+                  </View>
+                  {c.employees.map(e => (
+                    <Pressable key={e.id} onPress={() => setEvalTarget({ campaign: c, emp: e })} style={[S.card, { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+                      <Avatar name={e.name} src={e.avatar || undefined} size={40} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <T v="bodyS" style={{ fontSize: 15 }}>{e.name}</T>
+                        <T v="cap" color={C.ink3}>{e.dept || '—'}</T>
+                      </View>
+                      {e.done ? <StatusChip status="ok">Değerlendirildi</StatusChip> : <StatusChip status="warn">Bekliyor</StatusChip>}
+                      <Icon name="chevron" size={18} color={C.ink3} />
+                    </Pressable>
+                  ))}
+                </View>
+              ))}
             </View>
           )
         ) : loading ? <T v="body" color={C.ink2}>Yükleniyor…</T>
@@ -270,6 +306,81 @@ export function ManagerReview({ branch, onClose, onManual, onExitKiosk }:
           <HistoryScreen employeeId={historyEmp.id} live onBack={() => setHistoryEmp(null)} />
         </View>
       )}
+
+      {evalTarget && (
+        <EvalSheet campaign={evalTarget.campaign} emp={evalTarget.emp}
+          onClose={() => setEvalTarget(null)}
+          onSaved={() => { setEvalTarget(null); loadCampaigns(); }} />
+      )}
+    </View>
+  );
+}
+
+/* ── Yıldız seçici (1-5) ── */
+function StarPick({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 6 }}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <Pressable key={n} onPress={() => onChange(n === value ? 0 : n)} hitSlop={4}>
+          <Icon name="star" size={34} color={n <= value ? C.warn : C.border} fill={n <= value ? C.warn : 'none'} />
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+/* ── Performans değerlendirme formu (kiosk müdürü, birebir) ── */
+function EvalSheet({ campaign, emp, onClose, onSaved }:
+  { campaign: BranchCampaign; emp: BranchCampaignEmp; onClose: () => void; onSaved: () => void }) {
+  const [scores, setScores] = useState<Record<string, number>>({ ...emp.scores });
+  const [note, setNote] = useState(emp.note || '');
+  const [busy, setBusy] = useState(false);
+  const manual = campaign.criteria.filter(c => c.kind === 'manual');
+  const allRated = manual.length > 0 && manual.every(c => (scores[c.id] || 0) >= 1);
+  const setStar = (id: string, v: number) => setScores(s => { const n = { ...s }; if (v <= 0) delete n[id]; else n[id] = v; return n; });
+
+  const save = async () => {
+    if (busy || !allRated) return;
+    setBusy(true);
+    try { await api.branchSubmitEval(campaign.id, emp.id, scores, note.trim() || undefined); onSaved(); }
+    catch (e: any) { Alert.alert('Kaydedilemedi', e?.message || 'Tekrar deneyin.'); setBusy(false); }
+  };
+
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(13,20,19,0.55)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }}>
+      <View style={[{ backgroundColor: C.surface, borderRadius: R.xxl, width: '100%', maxWidth: 520, maxHeight: '90%' }, shadow.lg]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 20, borderBottomWidth: 1, borderBottomColor: C.border }}>
+          <Avatar name={emp.name} src={emp.avatar || undefined} size={44} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <T v="h3" numberOfLines={1}>{emp.name}</T>
+            <T v="sm" color={C.ink3} numberOfLines={1}>{campaign.name} · performans</T>
+          </View>
+          <Pressable onPress={onClose} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' }}><Icon name="x" size={20} color={C.ink} /></Pressable>
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 20, gap: 20 }}>
+          {manual.map(c => (
+            <View key={c.id} style={{ gap: 8 }}>
+              <View>
+                <T v="bodyS" style={{ fontSize: 15 }}>{c.label}</T>
+                {c.hint ? <T v="cap" color={C.ink3} style={{ marginTop: 2 }}>{c.hint}</T> : null}
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <StarPick value={scores[c.id] || 0} onChange={v => setStar(c.id, v)} />
+                <T v="sm" mono color={C.ink3}>{scores[c.id] ? `${scores[c.id]}/5` : '—'}</T>
+              </View>
+            </View>
+          ))}
+          <View>
+            <FieldLabel>Not (opsiyonel)</FieldLabel>
+            <TextArea placeholder="Güçlü yönler, gelişim alanları…" value={note} onChangeText={setNote} />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10, padding: 12, borderRadius: R.md, backgroundColor: C.brand50, borderWidth: 1, borderColor: C.brand100 }}>
+            <Icon name="info" size={19} color={C.brand700} />
+            <T v="sm" color={C.brand700} style={{ flex: 1 }}>Puanlar İK paneline taslak olarak iletilir; yayınlamayı İK yapar.</T>
+          </View>
+          <Button variant="primary" full height={54} label={busy ? 'Gönderiliyor…' : allRated ? 'Değerlendirmeyi gönder' : 'Tüm kriterleri puanlayın'} onPress={allRated && !busy ? save : undefined} style={allRated && !busy ? undefined : { opacity: 0.45 }} />
+        </ScrollView>
+      </View>
     </View>
   );
 }

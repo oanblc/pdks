@@ -105,6 +105,37 @@ model Evaluation {
   @@index([year])
 }
 
+// Değerlendirme dönemi — İK belirler: tarih aralığı + kriter alt kümesi + hedef şube(ler).
+// Aralık içindeyken şube yöneticisinin kioskunda görünür; yönetici birebir puanlar.
+model EvalCampaign {
+  id          Int                 @id @default(autoincrement())
+  name        String
+  year        Int
+  startDate   String // YYYY-MM-DD
+  endDate     String // YYYY-MM-DD (dahil)
+  branchIds   String              @default("[]") // JSON [branchId,...]
+  criteriaIds String              @default("[]") // JSON [critId,...] (manual alt küme)
+  status      String              @default("active") // active | closed
+  createdAt   DateTime            @default(now())
+  entries     EvalCampaignEntry[]
+}
+
+// Yöneticinin kioskta bir çalışan için girdiği dönem puanları (dönem × çalışan).
+model EvalCampaignEntry {
+  id          Int          @id @default(autoincrement())
+  campaignId  Int
+  campaign    EvalCampaign @relation(fields: [campaignId], references: [id])
+  employeeId  Int
+  scores      String       @default("{}") // JSON { critId: 1..5 }
+  note        String?
+  evaluator   String? // 'Şube müdürü'
+  submittedAt DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([campaignId, employeeId])
+  @@index([campaignId])
+}
+
 model ConsentRecord {
   id         Int      @id @default(autoincrement())
   employeeId Int
