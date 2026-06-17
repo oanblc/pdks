@@ -1,11 +1,12 @@
 // Profile.tsx — A8 Profil/Ayarlar + A9 Bildirimler + push banner
 import React, { useState, useEffect, useRef } from 'react';
-import { View, ScrollView, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder } from 'react-native';
+import { View, ScrollView, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder, Alert } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { color as C, radius as R, Tone, font } from '../theme/tokens';
 import { Icon, IconName } from '../components/Icon';
 import { T, RoundButton, StatusChip, Avatar, SectionLabel, MenuRow, Button, TextField, styles as S } from '../components/ui';
-import { FadeUp, PopIn } from '../components/anim';
+import { FadeUp, PopIn, Spinner } from '../components/anim';
 import { KvkkSheet } from '../components/KvkkSheet';
 import { DataRequestSheet } from './DataRequest';
 import { EMPLOYEE } from '../data';
@@ -23,12 +24,28 @@ const toneBg: Record<string, { bg: string; ink: string }> = {
   neu: { bg: C.neuBg, ink: C.neuInk }, err: { bg: C.errBg, ink: C.errInk },
 };
 
-export function ProfileScreen({ employee = EMPLOYEE, onClose, onLogout }: { employee?: typeof EMPLOYEE; onClose: () => void; onLogout: () => void }) {
+export function ProfileScreen({ employee = EMPLOYEE, onClose, onLogout, onUpdated }: { employee?: typeof EMPLOYEE; onClose: () => void; onLogout: () => void; onUpdated?: () => void }) {
   const insets = useSafeAreaInsets();
   const [kvkk, setKvkk] = useState(false);
   const [dataReq, setDataReq] = useState(false);
   const [pwd, setPwd] = useState(false);
   const [showKiosk, setShowKiosk] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const pickPhoto = async () => {
+    if (uploading) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { Alert.alert('İzin gerekli', 'Fotoğraf seçmek için galeri izni verin.'); return; }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5, base64: true });
+    if (res.canceled || !res.assets?.[0]?.base64) return;
+    const a = res.assets[0];
+    const dataUrl = `data:${a.mimeType || 'image/jpeg'};base64,${a.base64}`;
+    if (dataUrl.length > 690000) { Alert.alert('Fotoğraf çok büyük', 'Lütfen daha küçük bir fotoğraf seçin.'); return; }
+    setUploading(true);
+    try { await api.setAvatar(dataUrl); onUpdated?.(); }
+    catch (e: any) { Alert.alert('Yüklenemedi', e?.message || 'Tekrar deneyin.'); }
+    finally { setUploading(false); }
+  };
   const fmtDate = (s?: string | null) => {
     if (!s) return '—';
     const d = new Date(s);
@@ -48,8 +65,14 @@ export function ProfileScreen({ employee = EMPLOYEE, onClose, onLogout }: { empl
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 + insets.bottom, paddingTop: 8 }}>
         <View style={[S.card, { padding: 24, alignItems: 'center' }]}>
-          <Avatar name={employee.name} size={84} ring />
-          <T v="h2" style={{ marginTop: 14 }}>{employee.name}</T>
+          <Pressable onPress={pickPhoto} style={{ width: 84, height: 84 }}>
+            <Avatar name={employee.name} src={employee.avatar || undefined} size={84} ring />
+            <View style={{ position: 'absolute', right: -2, bottom: -2, width: 30, height: 30, borderRadius: 15, backgroundColor: C.brand600, borderWidth: 3, borderColor: C.surface, alignItems: 'center', justifyContent: 'center' }}>
+              {uploading ? <Spinner size={14} width={2} color={C.white} /> : <Icon name="camera" size={15} color={C.white} />}
+            </View>
+          </Pressable>
+          <T v="cap" color={C.ink3} style={{ marginTop: 8 }}>{uploading ? 'Yükleniyor…' : 'Fotoğraf eklemek için dokun'}</T>
+          <T v="h2" style={{ marginTop: 10 }}>{employee.name}</T>
           <T v="sm" color={C.ink2} style={{ marginTop: 3 }}>{employee.role}</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
             <StatusChip status="brand">{employee.branch}</StatusChip>

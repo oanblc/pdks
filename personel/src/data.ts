@@ -22,6 +22,7 @@ export const EMPLOYEE = {
   startDate: null as string | null,
   isManager: false,
   kioskCode: null as string | null,
+  avatar: null as string | null,
   id: '10428',
 };
 

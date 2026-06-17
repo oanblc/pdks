@@ -49,6 +49,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
     startDate: employee?.startDate ?? null,
     isManager: isManager,
     kioskCode: kioskCode,
+    avatar: employee?.avatar ?? null,
     id: employee?.sicil ?? EMPLOYEE.id,
   };
   const branchId = employee?.branchId ?? 1;
@@ -177,7 +178,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
           onRetry={() => setOverlay({ type: 'scan', action: overlay.action })} />
       )}
       {showProfile && (
-        <ProfileScreen employee={display} onClose={() => setShowProfile(false)} onLogout={() => { setShowProfile(false); clearAllReminders(); stopBranchGeofence(); if (onSignOut) onSignOut(); else setOnb({ start: 0 }); }} />
+        <ProfileScreen employee={display} onUpdated={refresh} onClose={() => setShowProfile(false)} onLogout={() => { setShowProfile(false); clearAllReminders(); stopBranchGeofence(); if (onSignOut) onSignOut(); else setOnb({ start: 0 }); }} />
       )}
       {showNotif && <NotificationsScreen onClose={() => setShowNotif(false)} />}
       {push && <PushBanner {...push} onPress={() => { setPush(null); setShowNotif(true); }} onDismiss={() => setPush(null)} />}

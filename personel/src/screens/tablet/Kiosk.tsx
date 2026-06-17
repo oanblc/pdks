@@ -133,7 +133,7 @@ export function KioskScreen({ offline, lastSync, branch, branchId, deviceCode, o
   );
 }
 
-export type Confirm = { name: string; action: 'enter' | 'exit'; time: string; queued?: boolean };
+export type Confirm = { name: string; action: 'enter' | 'exit'; time: string; queued?: boolean; avatar?: string | null };
 
 export function ConfirmOverlay({ data, onDone }: { data: Confirm; onDone: () => void }) {
   useEffect(() => { const t = setTimeout(onDone, 2400); return () => clearTimeout(t); }, []);
@@ -142,7 +142,7 @@ export function ConfirmOverlay({ data, onDone }: { data: Confirm; onDone: () => 
     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(13,20,19,0.55)', alignItems: 'center', justifyContent: 'center' }}>
       <PopIn style={[{ backgroundColor: C.surface, borderRadius: R.xxl, paddingVertical: 40, paddingHorizontal: 48, alignItems: 'center', minWidth: 320 }, shadow.lg]}>
         <View style={{ width: 132, height: 132 }}>
-          <Avatar name={data.name} size={132} />
+          <Avatar name={data.name} src={data.avatar || undefined} size={132} />
           <View style={{ position: 'absolute', right: -4, bottom: -4, width: 48, height: 48, borderRadius: 24, backgroundColor: enter ? C.ok : C.ink, borderWidth: 4, borderColor: C.white, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="check" size={26} color={C.white} strokeWidth={2.8} />
           </View>

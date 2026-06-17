@@ -174,7 +174,7 @@ app.post('/api/employee/login', { config: { rateLimit: { max: 60, timeWindow: '1
 });
 
 function publicEmployee(e: any) {
-  return { id: e.id, tc: e.tc, name: e.name, phone: e.phone, dept: e.dept, role: e.role, sicil: e.sicil, status: e.status, isManager: e.isManager ?? false, annualLeaveDays: e.annualLeaveDays ?? 14, branch: e.branch?.name ?? null, branchId: e.branchId, shiftId: e.shiftId, shift: e.shift ? `${e.shift.start} – ${e.shift.end}` : null, shiftStart: e.shift?.start ?? null, shiftEnd: e.shift?.end ?? null, breakMin: e.shift?.breakMin ?? null, overnight: e.shift?.overnight ?? false, startDate: e.startDate, exitDate: e.exitDate, exitReason: e.exitReason };
+  return { id: e.id, tc: e.tc, name: e.name, phone: e.phone, dept: e.dept, role: e.role, sicil: e.sicil, status: e.status, isManager: e.isManager ?? false, annualLeaveDays: e.annualLeaveDays ?? 14, avatar: e.avatar ?? null, branch: e.branch?.name ?? null, branchId: e.branchId, shiftId: e.shiftId, shift: e.shift ? `${e.shift.start} – ${e.shift.end}` : null, shiftStart: e.shift?.start ?? null, shiftEnd: e.shift?.end ?? null, breakMin: e.shift?.breakMin ?? null, overnight: e.shift?.overnight ?? false, startDate: e.startDate, exitDate: e.exitDate, exitReason: e.exitReason };
 }
 
 // ── Yıllık izin bakiyesi ── (sadece "Yıllık izin" tipi düşer; mazeret/hastalık ayrı)
@@ -550,6 +550,15 @@ app.post('/api/branch/location', { preHandler: requireBranch }, async (req: any,
 });
 
 // Kiosk müdür inceleme — bugün gelenler (çalışan bazında özet)
+// Şubenin EN SON okutması — kiosk bunu ~2sn'de bir yoklar; yeni okutmada çalışanın foto+adıyla "Hoş geldin" gösterir
+app.get('/api/branch/last-punch', { preHandler: requireBranch }, async (req: any) => {
+  const last = await prisma.punch.findFirst({
+    where: { branchId: req.user.sub }, orderBy: { serverTime: 'desc' }, include: { employee: true },
+  });
+  if (!last) return { punch: null };
+  return { punch: { id: last.id, empId: last.employeeId, name: last.employee?.name ?? '', avatar: last.employee?.avatar ?? null, action: last.action, time: last.serverTime } };
+});
+
 app.get('/api/branch/today', { preHandler: requireBranch }, async (req: any) => {
   const punches = await prisma.punch.findMany({
     where: { branchId: req.user.sub, serverTime: { gte: startOfToday() } },
@@ -907,6 +916,15 @@ app.post('/api/employee/change-password', { preHandler: requireEmployee }, async
   const emp = await prisma.employee.findUnique({ where: { id: req.user.sub } });
   if (!emp || !(await bcrypt.compare(p.data.current, emp.passwordHash))) return reply.code(401).send({ error: 'Mevcut şifre hatalı' });
   await prisma.employee.update({ where: { id: emp.id }, data: { passwordHash: await bcrypt.hash(p.data.next, 10) } });
+  return { ok: true };
+});
+
+// Profil fotoğrafı yükle/kaldır (data URL base64). Kioskta okutmada görünür.
+app.post('/api/employee/avatar', { preHandler: requireEmployee, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req: any, reply) => {
+  const p = z.object({ avatar: z.string().max(700000).nullable() }).safeParse(req.body); // ~500KB data URL üst sınırı
+  if (!p.success) return bad(reply, 'Fotoğraf çok büyük veya geçersiz (en fazla ~500KB)');
+  if (p.data.avatar && !/^data:image\/(png|jpe?g|webp);base64,/.test(p.data.avatar)) return bad(reply, 'Geçersiz görsel formatı');
+  await prisma.employee.update({ where: { id: req.user.sub }, data: { avatar: p.data.avatar } });
   return { ok: true };
 });
 

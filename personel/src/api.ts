@@ -16,7 +16,7 @@ export type Emp = {
   role?: string | null; sicil?: string | null; status: string; branch?: string | null; branchId?: number | null;
   shift?: string | null; startDate?: string | null;
   shiftStart?: string | null; shiftEnd?: string | null; breakMin?: number | null; overnight?: boolean;
-  isManager?: boolean;
+  isManager?: boolean; avatar?: string | null;
 };
 
 // Hata nesnesi: ağ hatası (.network) ile sunucu hatası (.status) ayırt edilir — çevrimdışı kuyruk bunu kullanır
@@ -74,6 +74,8 @@ export const api = {
   branchEmployees: () => req('/api/branch/employees') as Promise<{ id: number; name: string; dept: string | null }[]>,
   branchVerifyPin: (pin: string) => req('/api/branch/verify-pin', { method: 'POST', body: JSON.stringify({ pin }) }) as Promise<{ ok: boolean }>,
   branchVerifyPassword: (password: string) => req('/api/branch/verify-password', { method: 'POST', body: JSON.stringify({ password }) }) as Promise<{ ok: boolean }>,
+  branchLastPunch: () => req('/api/branch/last-punch') as Promise<{ punch: { id: number; empId: number; name: string; avatar: string | null; action: 'enter' | 'exit' | 'break-out' | 'break-in'; time: string } | null }>,
+  setAvatar: (avatar: string | null) => req('/api/employee/avatar', { method: 'POST', body: JSON.stringify({ avatar }) }) as Promise<{ ok: boolean }>,
   branchManualPunch: (employeeId: number, action: string, reason: string) =>
     req('/api/branch/manual-punch', { method: 'POST', body: JSON.stringify({ employeeId, action, reason }) }) as Promise<{ ok: boolean }>,
   changePassword: (current: string, next: string) =>
