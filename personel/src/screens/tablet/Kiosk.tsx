@@ -95,9 +95,9 @@ export function KioskScreen({ offline, lastSync, branch, branchId, deviceCode, o
               <T v="cap" color={C.ink3}>{date}</T>
             </View>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 4 }}>
-            <T v="counter" tnum style={{ fontSize: 38, lineHeight: 42 }}>{hm}</T>
-            <T v="h3" tnum color={C.ink3} style={{ fontSize: 17, marginBottom: 3 }}>:{ss}</T>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}>
+            <T v="counter" tnum style={{ fontSize: 38, lineHeight: 38 }}>{hm}</T>
+            <T v="h3" tnum color={C.ink3} style={{ fontSize: 17 }}>:{ss}</T>
           </View>
         </View>
       )}
