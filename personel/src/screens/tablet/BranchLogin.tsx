@@ -150,7 +150,7 @@ export function BranchLogin({ onStart, onBack }: { onStart: (branch: string, bra
 
             <View>
               <T v="bodyS" color={C.ink2} style={{ fontSize: 13 }}>Kiosk PIN'i</T>
-              <NumKeypad pin={pw} setPin={setPw} onSubmit={() => { if (!checking && !detecting && branch) handleStart(); }} busy={checking} statusText={' '} />
+              <NumKeypad pin={pw} setPin={setPw} onSubmit={() => { if (!checking && !detecting && branch) handleStart(); }} busy={checking} statusText={checking ? 'Konum doğrulanıyor…' : issue ? 'Tekrar dene' : ' '} />
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 }}>
@@ -160,14 +160,6 @@ export function BranchLogin({ onStart, onBack }: { onStart: (branch: string, bra
           </View>
 
           {issueCard}
-
-          <Pressable
-            onPress={checking || detecting || !branch ? undefined : handleStart}
-            style={({ pressed }) => [{ height: 54, marginTop: 18, borderRadius: R.md, backgroundColor: C.brand600, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 }, pressed && { transform: [{ scale: 0.985 }] }, (checking || detecting || !branch) && { opacity: 0.45 }]}>
-            {checking
-              ? <><Spinner size={18} width={2} trackColor={C.brand300} color={C.white} /><T v="bodyS" color={C.white} style={{ fontSize: 16 }}>Konum doğrulanıyor…</T></>
-              : <><Icon name={issue ? 'refresh' : 'check'} size={20} color={C.white} /><T v="bodyS" color={C.white}>{issue ? 'Tekrar dene' : 'Kiosk’u başlat'}</T></>}
-          </Pressable>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16 }}>
             <T v="monoLabel" color={C.ink3} style={{ textTransform: 'uppercase' }}>CİHAZ</T>
