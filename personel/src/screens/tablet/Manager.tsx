@@ -230,26 +230,41 @@ export function ManagerReview({ branch, onClose, onManual, onExitKiosk }:
               <T v="body" color={C.ink2} center style={{ marginTop: 10 }}>Aktif değerlendirme dönemi yok</T>
             </View>
           ) : (
-            <View style={{ gap: 18 }}>
-              {campaigns.map(c => (
-                <View key={c.id} style={{ gap: 10 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <T v="bodyS" style={{ fontSize: 15 }}>{c.name}</T>
-                    <T v="cap" color={C.ink3}>son gün {fmtKey(c.endDate)}</T>
-                  </View>
-                  {c.employees.map(e => (
-                    <Pressable key={e.id} onPress={() => setEvalTarget({ campaign: c, emp: e })} style={[S.card, { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
-                      <Avatar name={e.name} src={e.avatar || undefined} size={40} />
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <T v="bodyS" style={{ fontSize: 15 }}>{e.name}</T>
-                        <T v="cap" color={C.ink3}>{e.dept || '—'}</T>
+            <View style={{ gap: 20 }}>
+              {campaigns.map(c => {
+                const done = c.employees.filter(e => e.done).length;
+                return (
+                  <View key={c.id} style={{ gap: 10 }}>
+                    {/* dönem özeti */}
+                    <View style={[S.cardFlat, { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+                      <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: C.brand50, alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon name="star" size={22} color={C.brand700} fill={C.brand700} />
                       </View>
-                      {e.done ? <StatusChip status="ok">Değerlendirildi</StatusChip> : <StatusChip status="warn">Bekliyor</StatusChip>}
-                      <Icon name="chevron" size={18} color={C.ink3} />
-                    </Pressable>
-                  ))}
-                </View>
-              ))}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <T v="bodyS" style={{ fontSize: 15 }} numberOfLines={1}>{c.name}</T>
+                        <T v="cap" color={C.ink3}>Son gün {fmtKey(c.endDate)} · {c.criteria.length} kriter</T>
+                      </View>
+                      <StatusChip status={done === c.employees.length ? 'ok' : 'brand'}>{done}/{c.employees.length}</StatusChip>
+                    </View>
+                    {/* çalışanlar */}
+                    {c.employees.map(e => (
+                      <Pressable key={e.id} onPress={() => setEvalTarget({ campaign: c, emp: e })} style={[S.card, { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+                        <Avatar name={e.name} src={e.avatar || undefined} size={40} />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <T v="bodyS" style={{ fontSize: 15 }}>{e.name}</T>
+                          <T v="cap" color={C.ink3}>{e.dept || '—'}</T>
+                        </View>
+                        {e.done ? <StatusChip status="ok">Değerlendirildi</StatusChip> : <StatusChip status="warn">Bekliyor</StatusChip>}
+                        <Icon name="chevron" size={18} color={C.ink3} />
+                      </Pressable>
+                    ))}
+                  </View>
+                );
+              })}
+              <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 4 }}>
+                <Icon name="info" size={16} color={C.ink3} />
+                <T v="cap" color={C.ink3} style={{ flex: 1 }}>Girdiğiniz puanlar İK paneline taslak olarak iletilir; yayınlamayı İK yapar.</T>
+              </View>
             </View>
           )
         ) : loading ? <T v="body" color={C.ink2}>Yükleniyor…</T>
@@ -292,10 +307,12 @@ export function ManagerReview({ branch, onClose, onManual, onExitKiosk }:
             </View>
           )}
 
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, paddingHorizontal: 4 }}>
-          <Icon name="shield" size={16} color={C.ink3} />
-          <T v="cap" color={C.ink3} style={{ flex: 1 }}>Tüm onay, itiraz ve manuel işlemler kullanıcı ve zaman damgasıyla denetim kaydına yazılır.</T>
-        </View>
+        {tab !== 'eval' && (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, paddingHorizontal: 4 }}>
+            <Icon name="shield" size={16} color={C.ink3} />
+            <T v="cap" color={C.ink3} style={{ flex: 1 }}>Tüm onay, itiraz ve manuel işlemler kullanıcı ve zaman damgasıyla denetim kaydına yazılır.</T>
+          </View>
+        )}
 
         <Button variant="primary" full height={52} label="Kiosk’a dön" onPress={onClose} style={{ marginTop: 18 }} />
         <Button variant="quiet" label="Kiosk modundan çık" onPress={onExitKiosk} style={{ alignSelf: 'center', marginTop: 6 }} />
