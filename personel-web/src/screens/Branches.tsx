@@ -6,7 +6,7 @@ import { consumeNavArg, goto } from '../nav'
 import { PageHead, StatCard, Table, Row, StatusChip, Modal, Field, type Tone } from '../ui'
 
 type Device = { id: number; code: string; label: string | null; branchId: number; branch: string; city: string; mode: string; status: string }
-type Branch = { id: number; name: string; city?: string; lat?: number | null; lng?: number | null; radius?: number; workingDays?: number[] }
+type Branch = { id: number; name: string; city?: string; lat?: number | null; lng?: number | null; radius?: number; workingDays?: number[]; kioskPin?: string | null }
 
 const statusMap: Record<string, [Tone, string]> = {
   active: ['ok', 'Bağlı'],
@@ -127,8 +127,17 @@ function BranchDetailPage({ branch, devices, busy, onBack, onReload, onPair, onE
   const [tatilOpen, setTatilOpen] = useState(false)
   const [wd, setWd] = useState<number[]>(branch.workingDays ?? [1, 2, 3, 4, 5, 6])
   const [wdSaving, setWdSaving] = useState(false)
+  const [pinEdit, setPinEdit] = useState(false)
+  const [pinVal, setPinVal] = useState(branch.kioskPin || '')
+  const [pinSaving, setPinSaving] = useState(false)
   useEffect(() => { api.holidays().then((h: any) => setHolidays(h)).catch(() => {}) }, [])
-  useEffect(() => { setWd(branch.workingDays ?? [1, 2, 3, 4, 5, 6]) }, [branch.id])
+  useEffect(() => { setWd(branch.workingDays ?? [1, 2, 3, 4, 5, 6]); setPinVal(branch.kioskPin || ''); setPinEdit(false) }, [branch.id])
+  const savePin = async () => {
+    if (!/^\d{4,6}$/.test(pinVal)) { alert('Kiosk PIN 4-6 haneli olmalı'); return }
+    setPinSaving(true)
+    try { await api.updateBranch(branch.id, { kioskPin: pinVal }); setPinEdit(false); onReload() }
+    catch (e: any) { alert(e.message) } finally { setPinSaving(false) }
+  }
   const today = new Date().toISOString().slice(0, 10)
   const upcoming = holidays.filter(h => h.date >= today)
   const wdDirty = JSON.stringify([...wd].sort((a, b) => a - b)) !== JSON.stringify([...(branch.workingDays ?? [1, 2, 3, 4, 5, 6])].sort((a, b) => a - b))
@@ -159,6 +168,28 @@ function BranchDetailPage({ branch, devices, busy, onBack, onReload, onPair, onE
           </div>
           <button className="btn btn-ghost" onClick={onEditLocation} style={{ height: 36, whiteSpace: 'nowrap' }}>{locSet ? 'Düzenle' : 'Konum ayarla'}</button>
         </div>
+      </div>
+
+      {/* Kiosk yönetici PIN */}
+      <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+        <div className="rowx between" style={{ gap: 12 }}>
+          <div className="rowx gap10" style={{ minWidth: 0 }}>
+            <Icon name="lock" size={18} color="var(--brand-700)" />
+            <div style={{ minWidth: 0 }}>
+              <div className="t-sm">Kiosk yönetici PIN'i</div>
+              {pinEdit
+                ? <input className="input mono" value={pinVal} onChange={e => setPinVal(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="4-6 hane" style={{ width: 150, height: 34, marginTop: 6 }} autoFocus />
+                : <div className="t-cap ink-3 mono">{branch.kioskPin ? `PIN ${branch.kioskPin}` : 'Tanımlı değil'} · inceleme moduna giriş</div>}
+            </div>
+          </div>
+          {pinEdit
+            ? <div className="rowx gap8" style={{ flex: 'none' }}>
+                <button className="btn btn-ghost" style={{ height: 36 }} onClick={() => { setPinEdit(false); setPinVal(branch.kioskPin || '') }}>Vazgeç</button>
+                <button className="btn btn-primary" style={{ height: 36, opacity: pinSaving ? 0.6 : 1 }} disabled={pinSaving} onClick={savePin}>{pinSaving ? '…' : 'Kaydet'}</button>
+              </div>
+            : <button className="btn btn-ghost" onClick={() => setPinEdit(true)} style={{ height: 36, whiteSpace: 'nowrap', flex: 'none' }}>Düzenle</button>}
+        </div>
+        <div className="t-cap ink-4" style={{ marginTop: 10, lineHeight: 1.5 }}>Kiosk'ta <b>"Yönetici"</b> inceleme moduna giriş bu PIN ile yapılır. Kiosk'tan <b>çıkış</b> ise şube şifresini gerektirir.</div>
       </div>
 
       {/* Cihazlar */}
@@ -250,6 +281,7 @@ function AddBranchModal({ onClose, onDone }: { onClose: () => void; onDone: () =
   const [city, setCity] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [kioskPin, setKioskPin] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -258,9 +290,10 @@ function AddBranchModal({ onClose, onDone }: { onClose: () => void; onDone: () =
     if (!name.trim()) return setErr('Şube adı zorunludur')
     if (!username.trim()) return setErr('Kullanıcı adı zorunludur')
     if (password.length < 8) return setErr('Şifre en az 8 karakter olmalı')
+    if (kioskPin && !/^\d{4,6}$/.test(kioskPin)) return setErr('Kiosk PIN 4-6 haneli olmalı')
     setSaving(true)
     try {
-      await api.addBranch({ name: name.trim(), city: city.trim() || undefined, username: username.trim(), password })
+      await api.addBranch({ name: name.trim(), city: city.trim() || undefined, username: username.trim(), password, kioskPin: kioskPin || undefined })
       onDone()
     } catch (e: any) { setErr(e.message); setSaving(false) }
   }
@@ -275,8 +308,9 @@ function AddBranchModal({ onClose, onDone }: { onClose: () => void; onDone: () =
       <Field label="ŞUBE ADI"><input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Şube adı" /></Field>
       <Field label="ŞEHİR"><input className="input" value={city} onChange={e => setCity(e.target.value)} placeholder="Şehir" /></Field>
       <Field label="KULLANICI ADI"><input className="input" value={username} onChange={e => setUsername(e.target.value)} placeholder="Kiosk kullanıcı adı" /></Field>
-      <Field label="ŞİFRE"><input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Kiosk şifresi" /></Field>
-      <div className="t-cap ink-3" style={{ padding: '2px 2px 0', lineHeight: 1.5 }}>Kiosk yönetici PIN'i artık her gün otomatik değişen bir koddur; şubeye atadığınız <b>yetkili</b> çalışan bu kodu kendi uygulamasından görür.</div>
+      <Field label="ŞİFRE"><input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Kiosk şifresi (çıkışta da gerekir)" /></Field>
+      <Field label="KİOSK PIN (4-6 HANE)"><input className="input mono" value={kioskPin} onChange={e => setKioskPin(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="boş bırakılırsa 1234" /></Field>
+      <div className="t-cap ink-3" style={{ padding: '2px 2px 0', lineHeight: 1.5 }}>Kiosk'ta <b>yönetici inceleme moduna</b> giriş bu PIN ile yapılır (her zaman bu sayfadan görüp değiştirebilirsiniz). Kiosk'tan <b>çıkış</b> ise yukarıdaki <b>şube şifresini</b> gerektirir.</div>
     </Modal>
   )
 }

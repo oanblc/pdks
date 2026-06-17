@@ -80,9 +80,9 @@ export const api = {
   updateEmployee: (id: number, body: { name?: string; dept?: string | null; role?: string | null; branchId?: number | null; shiftId?: number | null; isManager?: boolean; annualLeaveDays?: number; startDate?: string | null }) =>
     req(`/api/employees/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   devices: () => req('/api/devices'),
-  addBranch: (body: { name: string; city?: string; username: string; password: string }) =>
+  addBranch: (body: { name: string; city?: string; username: string; password: string; kioskPin?: string }) =>
     req('/api/branches', { method: 'POST', body: JSON.stringify(body) }),
-  updateBranch: (id: number, body: { name?: string; city?: string | null; lat?: number | null; lng?: number | null; radius?: number; workingDays?: number[] }) =>
+  updateBranch: (id: number, body: { name?: string; city?: string | null; lat?: number | null; lng?: number | null; radius?: number; workingDays?: number[]; kioskPin?: string }) =>
     req(`/api/branches/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   pairDevice: (branchId: number, label?: string) => req('/api/devices', { method: 'POST', body: JSON.stringify({ branchId, label }) }),
   updateDevice: (id: number, body: { label?: string | null }) => req(`/api/devices/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),

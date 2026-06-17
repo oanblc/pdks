@@ -73,6 +73,7 @@ export const api = {
     req(`/api/punches/${id}/review`, { method: 'POST', body: JSON.stringify({ status }) }) as Promise<{ ok: boolean }>,
   branchEmployees: () => req('/api/branch/employees') as Promise<{ id: number; name: string; dept: string | null }[]>,
   branchVerifyPin: (pin: string) => req('/api/branch/verify-pin', { method: 'POST', body: JSON.stringify({ pin }) }) as Promise<{ ok: boolean }>,
+  branchVerifyPassword: (password: string) => req('/api/branch/verify-password', { method: 'POST', body: JSON.stringify({ password }) }) as Promise<{ ok: boolean }>,
   branchManualPunch: (employeeId: number, action: string, reason: string) =>
     req('/api/branch/manual-punch', { method: 'POST', body: JSON.stringify({ employeeId, action, reason }) }) as Promise<{ ok: boolean }>,
   changePassword: (current: string, next: string) =>

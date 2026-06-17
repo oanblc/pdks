@@ -5,7 +5,6 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import jwt from '@fastify/jwt';
 import bcrypt from 'bcryptjs';
-import { createHmac } from 'crypto';
 import { z } from 'zod';
 import { prisma } from './db.js';
 import { dailyRecords, monthRange, weekKey, shiftExpectedMin, workDayKey, type DayOpts } from './compute.js';
@@ -219,7 +218,7 @@ app.get('/api/branches', async (req: any) => {
   try { await req.jwtVerify(); isAdmin = req.user?.kind === 'admin'; } catch { /* anonim/çalışan */ }
   const branches = await prisma.branch.findMany({ orderBy: { id: 'asc' } });
   return branches.map(b => isAdmin
-    ? { id: b.id, name: b.name, city: b.city, shift: b.shift, lat: b.lat, lng: b.lng, radius: b.radius, workingDays: parseWorkingDays((b as any).workingDays) }
+    ? { id: b.id, name: b.name, city: b.city, shift: b.shift, lat: b.lat, lng: b.lng, radius: b.radius, workingDays: parseWorkingDays((b as any).workingDays), kioskPin: (() => { const mp = (b as any).managerPin; return mp && !String(mp).startsWith('$2') ? mp : null; })() }
     : { id: b.id, name: b.name, city: b.city, shift: b.shift, workingDays: parseWorkingDays((b as any).workingDays) });
 });
 
@@ -231,7 +230,8 @@ app.get('/api/me', { preHandler: requireEmployee }, async (req: any) => {
   const b = (emp as any)?.branch;
   const branchGeo = b && b.lat != null && b.lng != null ? { lat: b.lat, lng: b.lng, radius: b.radius ?? 100 } : null;
   // Yalnız şube yetkilisi bugünün kiosk kodunu görür
-  const kioskCode = emp?.isManager && emp?.branchId ? dailyKioskCode(emp.branchId, dKey(new Date())) : null;
+  // Yalnız şube yetkilisi, şubesinin statik kiosk PIN'ini görür
+  const kioskCode = emp?.isManager ? ((emp as any)?.branch?.managerPin ?? null) : null;
   // Vardiya baş/bitiş mutlak zamanları (İstanbul, gece vardiyası bilinçli) — hatırlatmalar istemcide TZ hesabı yapmasın
   const { startAt: shiftStartAt, endAt: shiftEndAt } = shiftInstants((emp as any)?.shift);
   const balances = await annualLeaveBalances(new Date().getFullYear());
@@ -355,12 +355,6 @@ app.post('/api/requests', { preHandler: requireEmployee, config: { rateLimit: { 
 
 // Onaylı izin günleri (YYYY-MM-DD kümesi) — belirli aralıkta
 const dKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-// Şubenin günlük kiosk kodu — deterministik (saklama yok), her gün (İstanbul) değişir. 6 hane.
-function dailyKioskCode(branchId: number, dateKey: string): string {
-  const h = createHmac('sha256', JWT_SECRET).update(`kiosk:${branchId}:${dateKey}`).digest('hex');
-  return String(parseInt(h.slice(0, 10), 16) % 1000000).padStart(6, '0');
-}
 
 // Vardiya baş/bitiş saatini bugünün (İstanbul) mutlak zamanına çevir — gece vardiyası iş gününe göre çapalanır.
 // Sunucu TZ=Europe/Istanbul olduğundan new Date()/setHours İstanbul yerel saatidir.
@@ -799,8 +793,18 @@ app.post('/api/branch/requests/:id/decide', { preHandler: requireBranch }, async
 app.post('/api/branch/verify-pin', { preHandler: requireBranch, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req: any, reply) => {
   const p = z.object({ pin: z.string() }).safeParse(req.body);
   if (!p.success) return bad(reply, 'PIN gerekli');
-  // Statik PIN yerine şubenin bugünkü günlük kodu — yetkili çalışan bunu kendi uygulamasından görür
-  const ok = p.data.pin === dailyKioskCode(req.user.sub, dKey(new Date()));
+  // İnceleme moduna giriş: şubenin admin'ce belirlenen statik kiosk PIN'i (panelde görünür/değişir)
+  const br = await prisma.branch.findUnique({ where: { id: req.user.sub } });
+  const ok = !!br?.managerPin && p.data.pin === br.managerPin;
+  return { ok };
+});
+
+// Kiosk modundan çıkış: şube parolasını tekrar doğrula (kiosk'u açan parolanın aynısı)
+app.post('/api/branch/verify-password', { preHandler: requireBranch, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req: any, reply) => {
+  const p = z.object({ password: z.string().min(1) }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Parola gerekli');
+  const br = await prisma.branch.findUnique({ where: { id: req.user.sub } });
+  const ok = !!br?.passwordHash && (await bcrypt.compare(p.data.password, br.passwordHash));
   return { ok };
 });
 
@@ -907,10 +911,10 @@ app.post('/api/employee/forgot', { config: { rateLimit: { max: 5, timeWindow: '1
 
 /* ───────── ŞUBE / CİHAZ / VARDİYA YÖNETİMİ (admin) ───────── */
 app.post('/api/branches', { preHandler: requireAdmin }, async (req: any, reply) => {
-  const p = z.object({ name: z.string().min(2), city: z.string().optional(), username: z.string().min(3), password: z.string().min(8, 'Şifre en az 8 karakter olmalı') }).safeParse(req.body);
+  const p = z.object({ name: z.string().min(2), city: z.string().optional(), username: z.string().min(3), password: z.string().min(8, 'Şifre en az 8 karakter olmalı'), kioskPin: z.string().regex(/^\d{4,6}$/, 'Kiosk PIN 4-6 haneli olmalı').optional() }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   if (await prisma.branch.findUnique({ where: { username: p.data.username } })) return bad(reply, 'Bu kullanıcı adı kullanılıyor');
-  const br = await prisma.branch.create({ data: { name: p.data.name, city: p.data.city, username: p.data.username, passwordHash: await bcrypt.hash(p.data.password, 10) } });
+  const br = await prisma.branch.create({ data: { name: p.data.name, city: p.data.city, username: p.data.username, passwordHash: await bcrypt.hash(p.data.password, 10), managerPin: p.data.kioskPin || '1234' } });
   const n = await prisma.device.count();
   await prisma.device.create({ data: { branchId: br.id, code: `TBL-${String(300 + (n * 17) % 9600).padStart(4, '0')}` } });
   await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Şube eklendi', detail: br.name } });
@@ -929,11 +933,13 @@ app.patch('/api/branches/:id', { preHandler: requireAdmin }, async (req: any, re
     lng: z.number().min(-180).max(180).nullable().optional(),
     radius: z.number().int().min(20).max(5000).optional(),
     workingDays: z.array(z.number().int().min(0).max(6)).optional(),
+    kioskPin: z.string().regex(/^\d{4,6}$/, 'Kiosk PIN 4-6 haneli olmalı').optional(),
   }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   const data: any = {};
   for (const k of ['name', 'city', 'lat', 'lng', 'radius'] as const) if (p.data[k] !== undefined) data[k] = p.data[k];
   if (p.data.workingDays !== undefined) data.workingDays = JSON.stringify([...new Set(p.data.workingDays)].sort((a, b) => a - b));
+  if (p.data.kioskPin !== undefined) data.managerPin = p.data.kioskPin;
   const updated = await prisma.branch.update({ where: { id }, data });
   const wdDone = p.data.workingDays !== undefined;
   await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Şube bilgileri güncellendi', detail: `${updated.name}${data.lat != null ? ` · konum ${data.lat.toFixed(5)}, ${data.lng?.toFixed(5)}` : ''}${data.radius != null ? ` · sınır ${data.radius} m` : ''}${wdDone ? ` · çalışma günleri güncellendi` : ''}` } });

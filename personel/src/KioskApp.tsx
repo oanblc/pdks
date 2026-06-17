@@ -6,7 +6,7 @@ import { color as C } from './theme/tokens';
 import { nowHM } from './data';
 import { BranchLogin } from './screens/tablet/BranchLogin';
 import { KioskScreen } from './screens/tablet/Kiosk';
-import { PinPad, ManagerReview, ManualPunch } from './screens/tablet/Manager';
+import { PinPad, ExitPad, ManagerReview, ManualPunch } from './screens/tablet/Manager';
 
 const BRANCH = 'Merkez Şube';
 
@@ -18,6 +18,7 @@ export function KioskApp({ onExit }: { onExit: () => void }) {
   const [pin, setPin] = useState(false);
   const [review, setReview] = useState(false);
   const [manual, setManual] = useState(false);
+  const [exitPrompt, setExitPrompt] = useState(false);
 
   // ── B3 offline (canlı, gerçek ağ durumu) ──
   const [netOffline, setNetOffline] = useState(false);
@@ -50,6 +51,7 @@ export function KioskApp({ onExit }: { onExit: () => void }) {
             offline={offline}
             lastSync={lastSync}
             onManager={() => setPin(true)}
+            onExit={() => setExitPrompt(true)}
           />}
 
       {pin && <PinPad onOk={() => { setPin(false); setReview(true); }} onClose={() => setPin(false)} />}
@@ -58,10 +60,11 @@ export function KioskApp({ onExit }: { onExit: () => void }) {
           branch={branch}
           onClose={() => { setReview(false); setManual(false); }}
           onManual={() => setManual(true)}
-          onExitKiosk={() => { setReview(false); setManual(false); onExit(); }}
+          onExitKiosk={() => { setReview(false); setManual(false); setExitPrompt(true); }}
         />
       )}
       {manual && <ManualPunch onClose={() => setManual(false)} />}
+      {exitPrompt && <ExitPad onOk={() => { setExitPrompt(false); onExit(); }} onClose={() => setExitPrompt(false)} />}
     </View>
   );
 }

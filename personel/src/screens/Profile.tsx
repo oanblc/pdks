@@ -73,7 +73,7 @@ export function ProfileScreen({ employee = EMPLOYEE, onClose, onLogout }: { empl
           <>
             <SectionLabel style={{ paddingTop: 20 }}>KIOSK KODU</SectionLabel>
             <View style={[S.card, { overflow: 'hidden' }]}>
-              <MenuRow icon="lock" title="Günlük kiosk kodu" detail="Her gün yenilenir · şube yetkilisi" onPress={() => setShowKiosk(true)} />
+              <MenuRow icon="lock" title="Kiosk yönetici PIN'i" detail="İnceleme moduna giriş · şube yetkilisi" onPress={() => setShowKiosk(true)} />
             </View>
           </>
         )}
@@ -108,23 +108,23 @@ function KioskCodeSheet({ code, onClose }: { code: string | null; onClose: () =>
     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.bg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 56, paddingHorizontal: 16, paddingBottom: 8, gap: 12 }}>
         <RoundButton icon="chevronL" onPress={onClose} bg={C.surface} />
-        <T v="h3">Kiosk Kodu</T>
+        <T v="h3">Kiosk PIN'i</T>
       </View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 + insets.bottom }}>
         <View style={[S.card, { padding: 28, alignItems: 'center' }]}>
           <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: C.brand50, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="lock" size={26} color={C.brand700} />
           </View>
-          <T v="cap" color={C.ink3} style={{ marginTop: 16 }}>BUGÜNÜN KODU</T>
+          <T v="cap" color={C.ink3} style={{ marginTop: 16 }}>KİOSK PIN'İ</T>
           <T mono tnum style={{ fontSize: 48, lineHeight: 58, letterSpacing: 10, marginTop: 8, color: C.ink, textAlign: 'center' }}>{code || '——'}</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
-            <Icon name="clock" size={14} color={C.ink3} />
-            <T v="cap" color={C.ink3}>Her gün otomatik yenilenir</T>
+            <Icon name="lock" size={14} color={C.ink3} />
+            <T v="cap" color={C.ink3}>Yönetici inceleme moduna giriş</T>
           </View>
         </View>
         <View style={[S.cardFlat, { padding: 16, marginTop: 14, flexDirection: 'row', gap: 12, alignItems: 'flex-start' }]}>
           <Icon name="info" size={18} color={C.ink3} />
-          <T v="sm" color={C.ink2} style={{ flex: 1, lineHeight: 20 }}>Kiosk tabletinde yönetici işlemlerine (inceleme, manuel okutma, kiosktan çıkış) geçerken bu kodu PIN olarak girin. Kod yalnız sizde ve şubenizin diğer yetkililerinde görünür.</T>
+          <T v="sm" color={C.ink2} style={{ flex: 1, lineHeight: 20 }}>Kiosk tabletinde <T v="sm" style={{ fontFamily: font.semibold }}>"Yönetici"</T> inceleme moduna geçerken bu PIN'i girin. Kiosk'tan <T v="sm" style={{ fontFamily: font.semibold }}>çıkış</T> ise şube şifresini gerektirir. PIN, panelde şube detayından belirlenir.</T>
         </View>
       </ScrollView>
     </View>

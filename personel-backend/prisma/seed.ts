@@ -23,7 +23,7 @@ async function main() {
   await prisma.adminUser.deleteMany();
 
   const merkez = await prisma.branch.create({ data: {
-    name: 'Merkez Şube', city: 'İstanbul', username: 'merkez-sube', passwordHash: await bcrypt.hash('sube123', 10),
+    name: 'Merkez Şube', city: 'İstanbul', username: 'merkez-sube', passwordHash: await bcrypt.hash('sube123', 10), managerPin: '4321',
   } });
   await prisma.device.create({ data: { branchId: merkez.id, code: 'TBL-0294', status: 'active' } });
 

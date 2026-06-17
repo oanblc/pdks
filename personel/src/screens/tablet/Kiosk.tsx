@@ -47,8 +47,8 @@ export function SyncPill({ offline, syncing, queued = 0, lastSync = '—' }:
   );
 }
 
-export function KioskScreen({ offline, lastSync, branch, branchId, deviceCode, onManager }:
-  { offline?: boolean; lastSync?: string; branch: string; branchId?: number; deviceCode?: string; onManager: () => void }) {
+export function KioskScreen({ offline, lastSync, branch, branchId, deviceCode, onManager, onExit }:
+  { offline?: boolean; lastSync?: string; branch: string; branchId?: number; deviceCode?: string; onManager: () => void; onExit: () => void }) {
   const insets = useSafeAreaInsets();
   const { hm, ss, date } = useClock();
   const { width, height } = useWindowDimensions();
@@ -121,7 +121,10 @@ export function KioskScreen({ offline, lastSync, branch, branchId, deviceCode, o
       <View style={{ paddingHorizontal: 24, paddingBottom: 24 + insets.bottom }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <SyncPill offline={offline} lastSync={lastSync} />
-          <Button variant="ghost" height={46} icon="lock" iconColor={C.ink} label="Yönetici" onPress={onManager} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Button variant="ghost" height={46} icon="logout" iconColor={C.ink2} label="Çıkış" onPress={onExit} />
+            <Button variant="ghost" height={46} icon="lock" iconColor={C.ink} label="Yönetici" onPress={onManager} />
+          </View>
         </View>
       </View>
     </View>
