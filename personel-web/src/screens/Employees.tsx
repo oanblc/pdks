@@ -6,7 +6,7 @@ import { goto } from '../nav'
 import { PageHead, SearchInput, Table, Row, Avatar, StatusChip, Modal, Field, type Tone } from '../ui'
 
 export type LeaveBalance = { entitlement: number; used: number; pending: number; remaining: number }
-export type Emp = { id: number; name: string; branch: string | null; branchId: number | null; shiftId: number | null; dept: string | null; role: string | null; status: string; sicil: string | null; startDate: string | null; exitDate: string | null; exitReason: string | null; onLeaveToday?: boolean; isManager?: boolean; annualLeaveDays?: number; leave?: LeaveBalance }
+export type Emp = { id: number; name: string; branch: string | null; branchId: number | null; shiftId: number | null; dept: string | null; role: string | null; status: string; sicil: string | null; startDate: string | null; exitDate: string | null; exitReason: string | null; avatar?: string | null; onLeaveToday?: boolean; isManager?: boolean; annualLeaveDays?: number; leave?: LeaveBalance }
 type Branch = { id: number; name: string }
 
 export const stMap: Record<string, [Tone, string]> = { active: ['ok', 'Aktif'], pending: ['warn', 'Onay bekliyor'], offboarding: ['neu', 'Çıkış sürecinde'] }
@@ -82,7 +82,7 @@ export function Employees() {
             <Row key={e.id} i={i} bg={e.status === 'pending' ? '#FFFCF5' : undefined} onClick={() => goto('employeeDetail', e)} cells={[
               { flex: 2.4, node: (
                 <div className="rowx gap12">
-                  <Avatar name={e.name} size={38} />
+                  <Avatar name={e.name} src={e.avatar || undefined} size={38} />
                   <div style={{ minWidth: 0 }}><div className="rowx gap8" style={{ alignItems: 'center' }}><span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap' }}>{e.name}</span>{e.isManager && <StatusChip status="ok">Yetkili</StatusChip>}</div><div className="t-cap ink-4 mono" style={{ whiteSpace: 'nowrap', marginTop: 3 }}>SİCİL {e.sicil || '—'}{e.status === 'active' && e.leave ? ` · İZİN ${e.leave.remaining}/${e.leave.entitlement} GÜN` : ''}</div></div>
                 </div>) },
               { flex: 1.4, node: <span className="t-body ink-2">{e.branch || '—'}</span> },

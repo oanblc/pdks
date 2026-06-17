@@ -46,6 +46,23 @@ export function ProfileScreen({ employee = EMPLOYEE, onClose, onLogout, onUpdate
     catch (e: any) { Alert.alert('Yüklenemedi', e?.message || 'Tekrar deneyin.'); }
     finally { setUploading(false); }
   };
+  const removePhoto = async () => {
+    if (uploading) return;
+    setUploading(true);
+    try { await api.setAvatar(null); onUpdated?.(); }
+    catch (e: any) { Alert.alert('Kaldırılamadı', e?.message || 'Tekrar deneyin.'); }
+    finally { setUploading(false); }
+  };
+  const onPhotoPress = () => {
+    if (uploading) return;
+    if (employee.avatar) {
+      Alert.alert('Profil fotoğrafı', undefined, [
+        { text: 'Fotoğrafı değiştir', onPress: pickPhoto },
+        { text: 'Fotoğrafı kaldır', style: 'destructive', onPress: removePhoto },
+        { text: 'Vazgeç', style: 'cancel' },
+      ]);
+    } else { pickPhoto(); }
+  };
   const fmtDate = (s?: string | null) => {
     if (!s) return '—';
     const d = new Date(s);
@@ -65,13 +82,13 @@ export function ProfileScreen({ employee = EMPLOYEE, onClose, onLogout, onUpdate
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 + insets.bottom, paddingTop: 8 }}>
         <View style={[S.card, { padding: 24, alignItems: 'center' }]}>
-          <Pressable onPress={pickPhoto} style={{ width: 84, height: 84 }}>
+          <Pressable onPress={onPhotoPress} style={{ width: 84, height: 84 }}>
             <Avatar name={employee.name} src={employee.avatar || undefined} size={84} ring />
-            <View style={{ position: 'absolute', right: -2, bottom: -2, width: 30, height: 30, borderRadius: 15, backgroundColor: C.brand600, borderWidth: 3, borderColor: C.surface, alignItems: 'center', justifyContent: 'center' }}>
-              {uploading ? <Spinner size={14} width={2} color={C.white} /> : <Icon name="camera" size={15} color={C.white} />}
+            <View style={{ position: 'absolute', right: -2, bottom: -2, width: 30, height: 30, borderRadius: 15, backgroundColor: employee.avatar ? C.ink : C.brand600, borderWidth: 3, borderColor: C.surface, alignItems: 'center', justifyContent: 'center' }}>
+              {uploading ? <Spinner size={14} width={2} color={C.white} /> : <Icon name={employee.avatar ? 'edit' : 'camera'} size={15} color={C.white} />}
             </View>
           </Pressable>
-          <T v="cap" color={C.ink3} style={{ marginTop: 8 }}>{uploading ? 'Yükleniyor…' : 'Fotoğraf eklemek için dokun'}</T>
+          <T v="cap" color={C.ink3} style={{ marginTop: 8 }}>{uploading ? 'Yükleniyor…' : employee.avatar ? 'Düzenlemek için dokun' : 'Fotoğraf eklemek için dokun'}</T>
           <T v="h2" style={{ marginTop: 10 }}>{employee.name}</T>
           <T v="sm" color={C.ink2} style={{ marginTop: 3 }}>{employee.role}</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>

@@ -107,7 +107,7 @@ export function EmployeeDetail() {
       {/* ── Sayfa başlığı: kimlik solda, ana aksiyonlar sağda ── */}
       <div className="rowx between" style={{ gap: 16, marginBottom: 22, alignItems: 'center' }}>
         <div className="rowx gap14" style={{ alignItems: 'center', minWidth: 0 }}>
-          <Avatar name={emp.name} size={52} />
+          <Avatar name={emp.name} src={emp.avatar || undefined} size={52} />
           <div style={{ minWidth: 0 }}>
             <div className="t-mono-label ink-3" style={{ fontSize: 10, marginBottom: 3 }}>ÇALIŞAN KAYDI</div>
             <div className="rowx gap10" style={{ alignItems: 'center' }}>

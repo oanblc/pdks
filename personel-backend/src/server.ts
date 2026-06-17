@@ -1212,7 +1212,7 @@ app.get('/api/timesheet', { preHandler: requireAdmin }, async (req: any) => {
         flagged.push({ empId: emp.id, name: emp.name, branch: emp.branch?.name, date: r.date, day: r.day, status: r.status, flagged: r.flagged, netMin: r.netMin, diffMin: r.diffMin, ageDays: age });
       }
     }
-    employees.push({ id: emp.id, name: emp.name, branch: emp.branch?.name ?? null, dept: emp.dept, sicil: emp.sicil, present: days.length, netMin, overtimeMin, missing, flaggedCount });
+    employees.push({ id: emp.id, name: emp.name, branch: emp.branch?.name ?? null, dept: emp.dept, sicil: emp.sicil, avatar: emp.avatar ?? null, present: days.length, netMin, overtimeMin, missing, flaggedCount });
     const byWeek = new Map<string, number>();
     for (const r of days) { const w = weekKey(new Date(r.date)); byWeek.set(w, (byWeek.get(w) || 0) + r.netMin); }
     for (const [w, min] of byWeek) if (min > 45 * 60) overtimeWeeks.push({ name: emp.name, week: w, hours: +(min / 60).toFixed(1) });

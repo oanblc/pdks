@@ -15,7 +15,7 @@ const monthFirst = (m: string) => `${m}-01`
 const monthLast = (m: string) => { const [y, mo] = m.split('-').map(Number); return `${m}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}` }
 const rangeLabel = (from: string, to: string) => from === to ? from : `${from} → ${to}`
 
-type EmpRow = { id: number; name: string; branch: string | null; dept: string | null; sicil: string | null; present: number; netMin: number; overtimeMin: number; missing: number; flaggedCount: number }
+type EmpRow = { id: number; name: string; branch: string | null; dept: string | null; sicil: string | null; present: number; netMin: number; overtimeMin: number; missing: number; flaggedCount: number; avatar?: string | null }
 type Flag = { empId: number; name: string; branch: string; date: string; day: number; status: string; flagged: boolean; netMin: number; diffMin: number; ageDays: number }
 type Data = { month: string; employees: EmpRow[]; flagged: Flag[]; overtimeWeeks: { name: string; week: string; hours: number }[]; branches?: { name: string; workingDays: number[] }[] }
 const stTone: Record<string, [Tone, string]> = { missing: ['warn', 'Eksik basma'], over: ['brand', 'Fazla mesai'], short: ['warn', 'Kısa gün'], full: ['ok', 'Tam gün'], leave: ['neu', 'İzinli'], holiday: ['neu', 'Tatil (kapalı)'], 'holiday-work': ['brand', 'Bayram mesaisi'] }
@@ -158,7 +158,8 @@ const GRID_LEGEND: [string, string][] = [['T', 'Tam gün'], ['F', 'Fazla mesai']
 function BranchSheet({ branch, month, employees, flagged, workingDays, onBack }: { branch: string; month: string; employees: EmpRow[]; flagged: Flag[]; workingDays?: number[]; onBack: () => void }) {
   const [openEmp, setOpenEmp] = useState<EmpRow | null>(null)
   const [flaggedOpen, setFlaggedOpen] = useState(false)
-  const [calOpen, setCalOpen] = useState(false)
+  const [calOpen, setCalOpen] = useState(true)
+  const [empOpen, setEmpOpen] = useState(false)
   const [grid, setGrid] = useState<Record<number, Record<number, string>> | null>(null)
   const emps = employees.filter(e => (e.branch || '— Şubesiz') === branch)
   const flags = flagged.filter(f => (f.branch || '— Şubesiz') === branch)
@@ -217,25 +218,9 @@ function BranchSheet({ branch, month, employees, flagged, workingDays, onBack }:
         ))}
       </div>
 
-      <div className="t-h3" style={{ margin: '0 0 12px' }}>Çalışan puantajı <span className="t-cap ink-3">· satıra tıkla, günlük giriş-çıkış</span></div>
-      {emps.length === 0 ? <div className="card" style={{ padding: 24 }}><span className="t-body ink-2">Bu şubede kayıt yok</span></div> : (
-        <Table cols={[{ label: 'ÇALIŞAN', flex: 1.9 }, { label: 'GÜN', flex: 0.8 }, { label: 'NET', flex: 1 }, { label: 'FAZLA MESAİ', flex: 1.1 }, { label: 'EKSİK', flex: 0.8 }, { label: 'BAYRAK', w: 110, align: 'right' }]}>
-          {emps.map((e, i) => (
-            <Row key={e.id} i={i} onClick={() => setOpenEmp(e)} cells={[
-              { flex: 1.9, node: <div className="rowx gap12"><Avatar name={e.name} size={36} /><div><div className="t-bodys" style={{ fontSize: 14.5 }}>{e.name}</div><div className="t-cap ink-3">{e.dept || '—'}</div></div></div> },
-              { flex: 0.8, node: <span className="t-sm mono">{e.present}</span> },
-              { flex: 1, node: <span className="t-sm mono">{hhmm(e.netMin)}</span> },
-              { flex: 1.1, node: <span className="t-sm mono" style={{ color: 'var(--brand-700)' }}>{e.overtimeMin > 0 ? '+' + hhmm(e.overtimeMin) : '—'}</span> },
-              { flex: 0.8, node: <span className="t-sm mono" style={{ color: e.missing ? 'var(--warn-ink)' : 'var(--ink-3)' }}>{e.missing}</span> },
-              { w: 110, align: 'right', node: e.flaggedCount > 0 ? <StatusChip status="err">{e.flaggedCount} bayrak</StatusChip> : <span className="t-sm ink-3">—</span> },
-            ]} />
-          ))}
-        </Table>
-      )}
-
-      {/* Puantaj çizelgesi (katlanır — varsayılan kapalı): çalışan × gün ızgarası */}
+      {/* Puantaj çizelgesi (takvim görünümü) — İLK SIRADA, varsayılan AÇIK */}
       <button className="card row-press rowx between" onClick={() => setCalOpen(o => !o)}
-        style={{ width: '100%', padding: '15px 18px', margin: '24px 0 0', cursor: 'pointer', border: '1px solid var(--border)', alignItems: 'center' }}>
+        style={{ width: '100%', padding: '15px 18px', margin: '0', cursor: 'pointer', border: '1px solid var(--border)', alignItems: 'center' }}>
         <div className="rowx gap10" style={{ alignItems: 'center' }}>
           <Icon name="calendar" size={18} color="var(--brand-700)" />
           <span className="t-bodys" style={{ fontSize: 15 }}>Puantaj çizelgesi</span>
@@ -287,6 +272,35 @@ function BranchSheet({ branch, month, employees, flagged, workingDays, onBack }:
                 })}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Çalışan puantajı (katlanır — varsayılan KAPALI) */}
+      <button className="card row-press rowx between" onClick={() => setEmpOpen(o => !o)}
+        style={{ width: '100%', padding: '15px 18px', margin: '24px 0 0', cursor: 'pointer', border: '1px solid var(--border)', alignItems: 'center' }}>
+        <div className="rowx gap10" style={{ alignItems: 'center' }}>
+          <Icon name="user" size={18} color="var(--brand-700)" />
+          <span className="t-bodys" style={{ fontSize: 15 }}>Çalışan puantajı</span>
+          <span className="t-cap ink-3">· satıra tıkla, günlük giriş-çıkış</span>
+        </div>
+        <Icon name={empOpen ? 'chevronDown' : 'chevron'} size={18} color="var(--ink-3)" />
+      </button>
+      {empOpen && (
+        <div style={{ marginTop: 12 }}>
+          {emps.length === 0 ? <div className="card" style={{ padding: 24 }}><span className="t-body ink-2">Bu şubede kayıt yok</span></div> : (
+            <Table cols={[{ label: 'ÇALIŞAN', flex: 1.9 }, { label: 'GÜN', flex: 0.8 }, { label: 'NET', flex: 1 }, { label: 'FAZLA MESAİ', flex: 1.1 }, { label: 'EKSİK', flex: 0.8 }, { label: 'BAYRAK', w: 110, align: 'right' }]}>
+              {emps.map((e, i) => (
+                <Row key={e.id} i={i} onClick={() => setOpenEmp(e)} cells={[
+                  { flex: 1.9, node: <div className="rowx gap12"><Avatar name={e.name} src={e.avatar || undefined} size={36} /><div><div className="t-bodys" style={{ fontSize: 14.5 }}>{e.name}</div><div className="t-cap ink-3">{e.dept || '—'}</div></div></div> },
+                  { flex: 0.8, node: <span className="t-sm mono">{e.present}</span> },
+                  { flex: 1, node: <span className="t-sm mono">{hhmm(e.netMin)}</span> },
+                  { flex: 1.1, node: <span className="t-sm mono" style={{ color: 'var(--brand-700)' }}>{e.overtimeMin > 0 ? '+' + hhmm(e.overtimeMin) : '—'}</span> },
+                  { flex: 0.8, node: <span className="t-sm mono" style={{ color: e.missing ? 'var(--warn-ink)' : 'var(--ink-3)' }}>{e.missing}</span> },
+                  { w: 110, align: 'right', node: e.flaggedCount > 0 ? <StatusChip status="err">{e.flaggedCount} bayrak</StatusChip> : <span className="t-sm ink-3">—</span> },
+                ]} />
+              ))}
+            </Table>
           )}
         </div>
       )}
