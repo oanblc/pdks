@@ -12,7 +12,7 @@ import { OnboardingFlow } from './screens/Onboarding';
 import { ProfileScreen, NotificationsScreen, PushBanner } from './screens/Profile';
 import { TabBar } from './components/ui';
 import { initNotifications } from './lib/notify';
-import { syncReminders, clearAllReminders } from './lib/reminders';
+import { syncReminders, clearAllReminders, dismissReminder, type ReminderKey } from './lib/reminders';
 import { startBranchGeofence, stopBranchGeofence } from './lib/geofence';
 import { enqueuePunch, flushQueue, newClientId } from './lib/punchQueue';
 import type { ApiError } from './api';
@@ -39,6 +39,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
   // Yetkili/kiosk kodu — me() ile güncellenir
   const [isManager, setIsManager] = useState(!!employee?.isManager);
   const [kioskCode, setKioskCode] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(employee?.avatar ?? null);
   // Gerçek çalışan varsa onu, yoksa (önizleme) mock'u kullan
   const display = {
     name: employee?.name ?? EMPLOYEE.name,
@@ -49,7 +50,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
     startDate: employee?.startDate ?? null,
     isManager: isManager,
     kioskCode: kioskCode,
-    avatar: employee?.avatar ?? null,
+    avatar: avatar,
     id: employee?.sicil ?? EMPLOYEE.id,
   };
   const branchId = employee?.branchId ?? 1;
@@ -65,7 +66,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
   const [showProfile, setShowProfile] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [onb, setOnb] = useState<{ start: number } | null>(null);
-  const [push, setPush] = useState<{ title: string; body: string; tone: string; icon: any } | null>(null);
+  const [push, setPush] = useState<{ key: ReminderKey; title: string; body: string; tone: string; icon: any } | null>(null);
   // me() ile gelen taze hatırlatma bağlamı (vardiya mutlak zamanları dahil — login prop'u bayatlamaz)
   type MeExtra = { lateToleranceMin: number; branchGeo: Geo | null; shiftStartAt: string | null; shiftEndAt: string | null; breakMin: number | null };
   const [meExtra, setMeExtra] = useState<MeExtra>({ lateToleranceMin: 15, branchGeo: null, shiftStartAt: null, shiftEndAt: null, breakMin: employee?.breakMin ?? null });
@@ -97,6 +98,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
       setMeExtra(extra);
       setIsManager(!!r.employee.isManager);
       setKioskCode(r.kioskCode);
+      setAvatar(r.employee.avatar ?? null);
       await startBranchGeofence(r.branchGeo);
       await runSync(st, bs, extra);
     } catch { /* sessiz */ }
@@ -181,7 +183,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
         <ProfileScreen employee={display} onUpdated={refresh} onClose={() => setShowProfile(false)} onLogout={() => { setShowProfile(false); clearAllReminders(); stopBranchGeofence(); if (onSignOut) onSignOut(); else setOnb({ start: 0 }); }} />
       )}
       {showNotif && <NotificationsScreen onClose={() => setShowNotif(false)} />}
-      {push && <PushBanner {...push} onPress={() => { setPush(null); setShowNotif(true); }} onDismiss={() => setPush(null)} />}
+      {push && <PushBanner title={push.title} body={push.body} tone={push.tone} icon={push.icon} onPress={() => { setPush(null); setShowNotif(true); }} onDismiss={() => { dismissReminder(push.key); setPush(null); }} />}
       {onb && (
         <OnboardingFlow
           key={onb.start}

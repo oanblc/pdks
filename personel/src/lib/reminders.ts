@@ -7,7 +7,12 @@ import { scheduleAt, cancel, presentNow, REMINDER_IDS } from './notify';
 import { saveReminderCtx, type Geo } from './session';
 import { API_BASE } from '../api';
 
-export type ReminderBanner = { title: string; body: string; tone: 'warn' | 'err' | 'neu' | 'ok'; icon: string };
+export type ReminderKey = 'breakOver' | 'lateIn' | 'missingExit' | 'shiftEnd';
+export type ReminderBanner = { key: ReminderKey; title: string; body: string; tone: 'warn' | 'err' | 'neu' | 'ok'; icon: string };
+
+// Kullanıcının elle kapattığı hatırlatmalar — koşul değişene (ör. giriş okutulana) kadar tekrar gösterilmez.
+const dismissed = new Set<ReminderKey>();
+export function dismissReminder(key: ReminderKey) { dismissed.add(key); }
 
 export type ReminderInput = {
   status: 'outside' | 'inside' | 'break';
@@ -48,12 +53,14 @@ export async function syncReminders(i: ReminderInput): Promise<ReminderBanner | 
   if (i.status === 'break' && i.breakStartMs && i.breakMin && i.breakMin > 0) {
     const when = i.breakStartMs + i.breakMin * 60000;
     if (now >= when) {
-      banner = { title: 'Mola süresi doldu', body: `${i.breakMin} dakikalık molan doldu. Okutup işe devam et.`, tone: 'warn', icon: 'clock' };
+      if (!dismissed.has('breakOver')) banner = { key: 'breakOver', title: 'Mola süresi doldu', body: `${i.breakMin} dakikalık molan doldu. Okutup işe devam et.`, tone: 'warn', icon: 'clock' };
       await cancel(REMINDER_IDS.breakOver);
     } else {
+      dismissed.delete('breakOver'); // henüz dolmadı → bir sonraki dolumda yeniden gösterilebilsin
       await scheduleAt(REMINDER_IDS.breakOver, new Date(when), 'Mola süresi doldu', `${i.breakMin} dakikalık molan doldu. Okutup işe devam et.`);
     }
   } else {
+    dismissed.delete('breakOver');
     await cancel(REMINDER_IDS.breakOver);
   }
 
@@ -62,12 +69,14 @@ export async function syncReminders(i: ReminderInput): Promise<ReminderBanner | 
   if (i.status === 'outside' && !isNaN(startMs) && insideBranch(i) === true) {
     const when = startMs + i.lateToleranceMin * 60000;
     if (now >= when) {
-      banner = banner ?? { title: 'Giriş okutmadın', body: 'Vardiyan başladı ve şubedesin ama giriş okutmadın. Lütfen giriş okut.', tone: 'warn', icon: 'bell' };
+      if (!banner && !dismissed.has('lateIn')) banner = { key: 'lateIn', title: 'Giriş okutmadın', body: 'Vardiyan başladı ve şubedesin ama giriş okutmadın. Lütfen giriş okut.', tone: 'warn', icon: 'bell' };
       await cancel(REMINDER_IDS.lateIn);
     } else {
+      dismissed.delete('lateIn');
       await scheduleAt(REMINDER_IDS.lateIn, new Date(when), 'Giriş okutmadın', 'Vardiyan başladı ve şubedesin ama giriş okutmadın. Lütfen giriş okut.');
     }
   } else {
+    dismissed.delete('lateIn'); // giriş okutuldu / şubeden ayrıldı → koşul kalktı, hafıza sıfırlanır
     await cancel(REMINDER_IDS.lateIn);
   }
 
@@ -76,15 +85,15 @@ export async function syncReminders(i: ReminderInput): Promise<ReminderBanner | 
   if (i.status !== 'outside' && !isNaN(endMs) && now >= endMs) {
     if (insideBranch(i) === false) {
       // İşletme dışında + çıkış okutulmamış → gerçek eksik çıkış (ön plan güvenlik ağı; arka plan geofence olayını tamamlar)
-      const b = { title: 'Çıkış okutmadın', body: 'İşletmeden ayrıldın ama çıkış okutmadın. Puantajın eksik kalmasın, çıkış okut.', tone: 'warn' as const, icon: 'bell' };
-      banner = b;
-      if (!missingExitNotified) { await presentNow(b.title, b.body, REMINDER_IDS.missingExit); missingExitNotified = true; }
+      if (!dismissed.has('missingExit')) banner = { key: 'missingExit', title: 'Çıkış okutmadın', body: 'İşletmeden ayrıldın ama çıkış okutmadın. Puantajın eksik kalmasın, çıkış okut.', tone: 'warn', icon: 'bell' };
+      if (!missingExitNotified) { await presentNow('Çıkış okutmadın', 'İşletmeden ayrıldın ama çıkış okutmadın. Puantajın eksik kalmasın, çıkış okut.', REMINDER_IDS.missingExit); missingExitNotified = true; }
     } else {
       // Hâlâ işletmedeyse nazik hatırlatma
-      banner = banner ?? { title: 'Vardiyan bitti', body: 'Vardiya bitiş saatini geçtin. Çıkış okutmayı unutma.', tone: 'neu', icon: 'bell' };
+      if (!banner && !dismissed.has('shiftEnd')) banner = { key: 'shiftEnd', title: 'Vardiyan bitti', body: 'Vardiya bitiş saatini geçtin. Çıkış okutmayı unutma.', tone: 'neu', icon: 'bell' };
       missingExitNotified = false;
     }
   } else {
+    dismissed.delete('missingExit'); dismissed.delete('shiftEnd'); // çıkış okutuldu / vardiya bitmedi → hafıza sıfırlanır
     missingExitNotified = false;
   }
 
@@ -94,6 +103,7 @@ export async function syncReminders(i: ReminderInput): Promise<ReminderBanner | 
 // Çıkış yapıldığında / oturum kapandığında / 401'de tüm hatırlatmaları temizle.
 export async function clearAllReminders() {
   missingExitNotified = false; // kullanıcı değişiminde bayrak sıfırlanır (aksi halde eksik-çıkış takılır)
+  dismissed.clear();
   await cancel(REMINDER_IDS.breakOver);
   await cancel(REMINDER_IDS.lateIn);
   await cancel(REMINDER_IDS.missingExit);
