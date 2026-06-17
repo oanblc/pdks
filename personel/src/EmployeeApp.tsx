@@ -180,7 +180,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
         <ProfileScreen employee={display} onClose={() => setShowProfile(false)} onLogout={() => { setShowProfile(false); clearAllReminders(); stopBranchGeofence(); if (onSignOut) onSignOut(); else setOnb({ start: 0 }); }} />
       )}
       {showNotif && <NotificationsScreen onClose={() => setShowNotif(false)} />}
-      {push && <PushBanner {...push} onPress={() => { setPush(null); setShowNotif(true); }} />}
+      {push && <PushBanner {...push} onPress={() => { setPush(null); setShowNotif(true); }} onDismiss={() => setPush(null)} />}
       {onb && (
         <OnboardingFlow
           key={onb.start}

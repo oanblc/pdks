@@ -1,6 +1,6 @@
 // Profile.tsx — A8 Profil/Ayarlar + A9 Bildirimler + push banner
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, ScrollView, Pressable, KeyboardAvoidingView, Platform, Animated, PanResponder } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { color as C, radius as R, Tone, font } from '../theme/tokens';
 import { Icon, IconName } from '../components/Icon';
@@ -249,22 +249,42 @@ export function NotificationsScreen({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function PushBanner({ title, body, tone = 'warn', icon = 'bell', onPress }:
-  { title: string; body: string; tone?: string; icon?: IconName; onPress?: () => void }) {
+export function PushBanner({ title, body, tone = 'warn', icon = 'bell', onPress, onDismiss }:
+  { title: string; body: string; tone?: string; icon?: IconName; onPress?: () => void; onDismiss?: () => void }) {
   const tb = toneBg[tone] || toneBg.warn;
+  const tx = useRef(new Animated.Value(0)).current;
+  const pan = useRef(
+    PanResponder.create({
+      // Yalnız belirgin yatay sürüklemede yakala — dokunma (onPress) bozulmasın
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderMove: (_, g) => tx.setValue(g.dx),
+      onPanResponderRelease: (_, g) => {
+        if (Math.abs(g.dx) > 110 || Math.abs(g.vx) > 0.5) {
+          // eşiği geçti → ekrandan kaydır ve kapat
+          Animated.timing(tx, { toValue: g.dx > 0 ? 600 : -600, duration: 180, useNativeDriver: true }).start(() => onDismiss && onDismiss());
+        } else {
+          // geri yay
+          Animated.spring(tx, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
+        }
+      },
+    }),
+  ).current;
+  const opacity = tx.interpolate({ inputRange: [-220, 0, 220], outputRange: [0, 1, 0], extrapolate: 'clamp' });
   return (
     <FadeUp delay={0} distance={-12} style={{ position: 'absolute', top: 52, left: 12, right: 12 }}>
-      <Pressable onPress={onPress} style={[{ backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 14, flexDirection: 'row', gap: 12, alignItems: 'flex-start' }, S.card, shadowLg]}>
-        <View style={{ width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: tb.bg }}><Icon name={icon} size={20} color={tb.ink} /></View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <T v="bodyS" style={{ fontSize: 15 }}>Çalışan PDKS</T>
-            <T v="cap" color={C.ink3}>şimdi</T>
+      <Animated.View {...pan.panHandlers} style={{ transform: [{ translateX: tx }], opacity }}>
+        <Pressable onPress={onPress} style={[{ backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 14, flexDirection: 'row', gap: 12, alignItems: 'flex-start' }, S.card, shadowLg]}>
+          <View style={{ width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: tb.bg }}><Icon name={icon} size={20} color={tb.ink} /></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <T v="bodyS" style={{ fontSize: 15 }}>Çalışan PDKS</T>
+              <T v="cap" color={C.ink3}>şimdi</T>
+            </View>
+            <T v="sm" style={{ fontFamily: font.semibold, marginTop: 2 }}>{title}</T>
+            <T v="sm" color={C.ink2} style={{ fontFamily: font.regular, marginTop: 1 }}>{body}</T>
           </View>
-          <T v="sm" style={{ fontFamily: font.semibold, marginTop: 2 }}>{title}</T>
-          <T v="sm" color={C.ink2} style={{ fontFamily: font.regular, marginTop: 1 }}>{body}</T>
-        </View>
-      </Pressable>
+        </Pressable>
+      </Animated.View>
     </FadeUp>
   );
 }
