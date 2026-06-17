@@ -1,5 +1,5 @@
 // Kvkk.tsx — C11 KVKK (rıza durumu + DSAR talepleri + detay/yanıt akışı)
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { Icon } from '../icons'
 import { api } from '../api'
 import { PageHead, StatCard, Table, Row, StatusChip, Avatar, Modal, type Tone } from '../ui'
@@ -102,11 +102,14 @@ export function Kvkk() {
 }
 
 function KvkkDocModal({ doc, onClose, onSaved }: { doc: KvkkDoc; onClose: () => void; onSaved: () => void }) {
-  const [edit, setEdit] = useState(false)
+  const [mode, setMode] = useState<'view' | 'edit' | 'publish'>('view')
   const [title, setTitle] = useState(doc.title)
   const [body, setBody] = useState(doc.body)
+  const [version, setVersion] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  const taStyle: CSSProperties = { width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border-strong)', background: 'var(--surface)', padding: '12px 14px', fontSize: 13, fontFamily: 'inherit', color: '#26344a', lineHeight: 1.6, resize: 'vertical', outline: 'none' }
 
   const save = async () => {
     setErr(null)
@@ -117,28 +120,69 @@ function KvkkDocModal({ doc, onClose, onSaved }: { doc: KvkkDoc; onClose: () => 
     catch (e: any) { setErr(e.message); setSaving(false) }
   }
 
-  return (
-    <Modal title={`Aydınlatma metni · ${doc.version}`} onClose={onClose} width={680}
-      footer={<>
+  const publish = async () => {
+    setErr(null)
+    if (!/^[\w.\-]+$/.test(version.trim())) return setErr('Geçerli bir sürüm girin (örn. v2.2)')
+    if (version.trim() === doc.version) return setErr('Bu sürüm zaten yürürlükte. Metni değiştirmek için "Düzenle" kullanın.')
+    if (title.trim().length < 2) return setErr('Başlık en az 2 karakter olmalı')
+    if (body.trim().length < 10) return setErr('Metin en az 10 karakter olmalı')
+    if (!confirm(`"${version.trim()}" sürümü yayınlansın mı?\n\nMevcut tüm rızalar "Eski sürüm" durumuna düşer ve çalışanların yeni metni tekrar onaylaması gerekir.`)) return
+    setSaving(true)
+    try { await api.publishKvkkVersion({ version: version.trim(), title: title.trim(), body }); onSaved() }
+    catch (e: any) { setErr(e.message); setSaving(false) }
+  }
+
+  const footer = mode === 'view'
+    ? <>
         <button className="btn btn-ghost" style={{ height: 40 }} onClick={onClose}>Kapat</button>
-        {edit
-          ? <button className="btn btn-primary" style={{ height: 40, opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={save}>{saving ? 'Kaydediliyor…' : 'Metni kaydet'}</button>
-          : <button className="btn btn-primary" style={{ height: 40 }} onClick={() => setEdit(true)}><Icon name="edit" size={16} color="#fff" /> Düzenle</button>}
-      </>}>
+        <button className="btn btn-ghost" style={{ height: 40 }} onClick={() => { setTitle(doc.title); setBody(doc.body); setMode('edit') }}><Icon name="edit" size={16} /> Düzenle</button>
+        <button className="btn btn-primary" style={{ height: 40 }} onClick={() => { setTitle(doc.title); setBody(doc.body); setVersion(''); setMode('publish') }}><Icon name="plus" size={16} color="#fff" strokeWidth={2} /> Yeni sürüm yayınla</button>
+      </>
+    : mode === 'edit'
+    ? <>
+        <button className="btn btn-ghost" style={{ height: 40 }} onClick={() => { setErr(null); setMode('view') }}>Vazgeç</button>
+        <button className="btn btn-primary" style={{ height: 40, opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={save}>{saving ? 'Kaydediliyor…' : 'Metni kaydet'}</button>
+      </>
+    : <>
+        <button className="btn btn-ghost" style={{ height: 40 }} onClick={() => { setErr(null); setMode('view') }}>Vazgeç</button>
+        <button className="btn btn-primary" style={{ height: 40, opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={publish}>{saving ? 'Yayınlanıyor…' : 'Sürümü yayınla'}</button>
+      </>
+
+  const titleTxt = mode === 'publish' ? 'Yeni KVKK sürümü yayınla' : mode === 'edit' ? `Metni düzenle · ${doc.version}` : `Aydınlatma metni · ${doc.version}`
+
+  return (
+    <Modal title={titleTxt} onClose={onClose} width={680} footer={footer}>
       {err && <div className="t-sm" style={{ color: 'var(--err-ink)', background: 'var(--err-bg)', padding: '10px 12px', borderRadius: 'var(--r-sm)' }}>{err}</div>}
-      <div className="t-cap ink-4 mono">Sürüm {doc.version}{doc.updatedAt ? ` · son güncelleme ${trDateTime(doc.updatedAt)}` : ' · varsayılan metin (henüz düzenlenmedi)'}</div>
-      {edit ? (
+
+      {mode === 'view' && (
+        <>
+          <div className="t-cap ink-4 mono">Sürüm {doc.version}{doc.updatedAt ? ` · son güncelleme ${trDateTime(doc.updatedAt)}` : ' · varsayılan metin (henüz düzenlenmedi)'}</div>
+          <div className="t-bodys" style={{ fontSize: 15 }}>{doc.title}</div>
+          <div style={{ maxHeight: '50vh', overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.65, color: 'var(--ink-2)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '14px 16px' }}>{doc.body}</div>
+          <div className="t-cap ink-4" style={{ lineHeight: 1.5 }}>Çalışanların mobil uygulamada onayladığı metnin aynısıdır. "Rıza durumu" tablosundan kimin hangi sürümü ne zaman onayladığını görebilirsiniz.</div>
+        </>
+      )}
+
+      {mode === 'edit' && (
         <>
           <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Başlık" />
-          <textarea value={body} onChange={e => setBody(e.target.value)} rows={18}
-            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border-strong)', background: 'var(--surface)', padding: '12px 14px', fontSize: 13, fontFamily: 'inherit', color: '#26344a', lineHeight: 1.6, resize: 'vertical', outline: 'none' }} />
-          <div className="t-cap ink-4" style={{ lineHeight: 1.5 }}>Not: Metni düzenlemek hukuki olarak yeni bir <b>sürüm</b> gerektirebilir; mevcut onaylar bu sürüm ({doc.version}) için geçerli kalır. Değişiklik denetim kaydına yazılır.</div>
+          <textarea value={body} onChange={e => setBody(e.target.value)} rows={18} style={taStyle} />
+          <div className="t-cap ink-4" style={{ lineHeight: 1.5 }}>Bu, mevcut sürümün ({doc.version}) metnini <b>yerinde düzeltir</b> — sürüm artmaz, mevcut onaylar geçerli kalır. Yazım/küçük düzeltmeler için uygundur. Esaslı değişiklikte "Yeni sürüm yayınla" kullanın. Değişiklik denetim kaydına yazılır.</div>
         </>
-      ) : (
+      )}
+
+      {mode === 'publish' && (
         <>
-          <div className="t-bodys" style={{ fontSize: 15 }}>{doc.title}</div>
-          <div style={{ maxHeight: '52vh', overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.65, color: 'var(--ink-2)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '14px 16px' }}>{doc.body}</div>
-          <div className="t-cap ink-4" style={{ lineHeight: 1.5 }}>Çalışanların mobil uygulamada onayladığı metnin aynısıdır. "Rıza durumu" tablosundan kimin hangi sürümü ne zaman onayladığını görebilirsiniz.</div>
+          <div className="rowx gap10" style={{ padding: '10px 14px', borderRadius: 'var(--r-sm)', background: 'var(--warn-bg)', border: '1px solid var(--warn-ring)' }}>
+            <Icon name="alert" size={17} color="var(--warn)" />
+            <span className="t-cap" style={{ color: 'var(--warn-ink)', lineHeight: 1.45 }}>Yeni sürüm yayınlanınca <b>mevcut tüm rızalar "Eski sürüm"e düşer</b> ve çalışanların yeni metni tekrar onaylaması gerekir. Mevcut yürürlükteki sürüm: <b>{doc.version}</b>.</span>
+          </div>
+          <div className="field col" style={{ gap: 6 }}>
+            <label className="field-label t-mono-label">Yeni sürüm etiketi</label>
+            <input className="input mono" value={version} onChange={e => setVersion(e.target.value)} placeholder="örn. v2.2" style={{ maxWidth: 200 }} />
+          </div>
+          <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Başlık" />
+          <textarea value={body} onChange={e => setBody(e.target.value)} rows={16} style={taStyle} />
         </>
       )}
     </Modal>

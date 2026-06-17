@@ -10,8 +10,9 @@ import { z } from 'zod';
 import { prisma } from './db.js';
 import { dailyRecords, monthRange, weekKey, shiftExpectedMin, workDayKey, type DayOpts } from './compute.js';
 
-const KVKK_VERSION = 'v2.1';
-const KVKK_DOC_KEY = `kvkk-doc-${KVKK_VERSION}`;
+const KVKK_VERSION = 'v2.1';            // varsayılan/başlangıç sürümü (Setting yoksa bu kullanılır)
+const KVKK_VERSION_KEY = 'kvkk-version';
+const kvkkDocKey = (v: string) => `kvkk-doc-${v}`;
 const KVKK_DOC_DEFAULT = {
   title: 'Çalışan Kişisel Verilerinin İşlenmesine İlişkin Aydınlatma Metni',
   body: `Bu aydınlatma metni, 6698 sayılı Kişisel Verilerin Korunması Kanunu ("KVKK") md. 10 kapsamında, veri sorumlusu sıfatıyla işvereniniz tarafından, çalışan kişisel verilerinizin işlenmesine ilişkin sizi bilgilendirmek amacıyla hazırlanmıştır.
@@ -44,10 +45,14 @@ Kişisel verilerinize erişme, düzeltilmesini veya silinmesini isteme, işlenme
 
 Bu metni okuduğunuzu ve kişisel verilerinizin yukarıdaki kapsamda işlenmesine ilişkin bilgilendirildiğinizi onaylarsınız.`,
 };
-async function getKvkkDoc() {
-  const s = await prisma.setting.findUnique({ where: { key: KVKK_DOC_KEY } });
-  if (s) { try { const d = JSON.parse(s.value); return { version: KVKK_VERSION, title: d.title, body: d.body, updatedAt: d.updatedAt ?? null }; } catch { /* bozuk kayıt → varsayılana düş */ } }
-  return { version: KVKK_VERSION, title: KVKK_DOC_DEFAULT.title, body: KVKK_DOC_DEFAULT.body, updatedAt: null };
+async function getKvkkVersion() {
+  const s = await prisma.setting.findUnique({ where: { key: KVKK_VERSION_KEY } });
+  return s?.value || KVKK_VERSION;
+}
+async function getKvkkDoc(version: string) {
+  const s = await prisma.setting.findUnique({ where: { key: kvkkDocKey(version) } });
+  if (s) { try { const d = JSON.parse(s.value); return { version, title: d.title, body: d.body, updatedAt: d.updatedAt ?? null }; } catch { /* bozuk kayıt → varsayılana düş */ } }
+  return { version, title: KVKK_DOC_DEFAULT.title, body: KVKK_DOC_DEFAULT.body, updatedAt: null };
 }
 const currentMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
 const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -1141,7 +1146,7 @@ app.get('/api/data-requests/:id', { preHandler: requireAdmin }, async (req: any,
   const requests = await prisma.request.findMany({ where: { employeeId: e.id }, orderBy: { createdAt: 'desc' } });
   const dataPackage = {
     olusturuldu: new Date().toISOString(),
-    kvkk_surumu: KVKK_VERSION,
+    kvkk_surumu: await getKvkkVersion(),
     kimlik: { ad_soyad: e.name, tc: e.tc, telefon: e.phone, adres: e.address, departman: e.dept, gorev: e.role, sicil: e.sicil, durum: e.status, ise_baslama: e.startDate, sube: e.branch?.name ?? null, vardiya: e.shift?.name ?? null },
     riza_gecmisi: e.consents.sort((a, b) => +b.acceptedAt - +a.acceptedAt).map(c => ({ surum: c.version, kabul_tarihi: c.acceptedAt })),
     basis_kayitlari: punches.map(p => ({ zaman: p.serverTime, eylem: p.action, kaynak: p.source, durum: p.status, sube: p.branch?.name ?? null })),
@@ -1350,27 +1355,48 @@ app.get('/api/reports', { preHandler: requireAdmin }, async (req: any) => {
 
 /* ───────── KVKK ───────── */
 app.get('/api/kvkk', { preHandler: requireAdmin }, async () => {
+  const version = await getKvkkVersion();
   const emps = await prisma.employee.findMany({ where: { status: { in: ['active', 'pending'] } }, include: { consents: true } });
   const employees = emps.map(e => {
     const latest = e.consents.sort((a, b) => +b.acceptedAt - +a.acceptedAt)[0];
-    const status = !latest ? 'none' : latest.version === KVKK_VERSION ? 'current' : 'old';
+    const status = !latest ? 'none' : latest.version === version ? 'current' : 'old';
     return { name: e.name, status, version: latest?.version || null, acceptedAt: latest?.acceptedAt || null };
   });
   const drs = await prisma.dataRequest.findMany({ include: { employee: true }, orderBy: { createdAt: 'desc' } });
   const requests = drs.map(r => ({ id: r.id, name: r.employee.name, type: r.type, status: r.status, createdAt: r.createdAt }));
-  const document = await getKvkkDoc();
-  return { version: KVKK_VERSION, document, employees, requests };
+  const document = await getKvkkDoc(version);
+  return { version, document, employees, requests };
 });
 
-// Aydınlatma metnini güncelle (mevcut sürüm için saklanan metni değiştirir)
+// Aydınlatma metnini güncelle (mevcut sürüm için saklanan metni değiştirir — sürüm artmaz)
 app.patch('/api/kvkk/document', { preHandler: requireAdmin }, async (req: any, reply) => {
   const p = z.object({ title: z.string().min(2, 'Başlık en az 2 karakter olmalı'), body: z.string().min(10, 'Metin en az 10 karakter olmalı') }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  const version = await getKvkkVersion();
   const updatedAt = new Date().toISOString();
   const value = JSON.stringify({ title: p.data.title.trim(), body: p.data.body, updatedAt });
-  await prisma.setting.upsert({ where: { key: KVKK_DOC_KEY }, create: { key: KVKK_DOC_KEY, value }, update: { value } });
-  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'kvkk', action: 'Aydınlatma metni güncellendi', detail: `${KVKK_VERSION} · ${p.data.title.trim()}` } });
-  return { version: KVKK_VERSION, title: p.data.title.trim(), body: p.data.body, updatedAt };
+  await prisma.setting.upsert({ where: { key: kvkkDocKey(version) }, create: { key: kvkkDocKey(version), value }, update: { value } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'kvkk', action: 'Aydınlatma metni güncellendi', detail: `${version} · ${p.data.title.trim()}` } });
+  return { version, title: p.data.title.trim(), body: p.data.body, updatedAt };
+});
+
+// Yeni sürüm yayınla: yeni sürümü yürürlüğe alır; mevcut rızalar otomatik "Eski sürüm"e düşer
+app.post('/api/kvkk/version', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({
+    version: z.string().trim().min(1, 'Sürüm gerekli').max(20).regex(/^[\w.\-]+$/, 'Sürüm yalnız harf, rakam, nokta ve tire içerebilir'),
+    title: z.string().min(2, 'Başlık en az 2 karakter olmalı'),
+    body: z.string().min(10, 'Metin en az 10 karakter olmalı'),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  const cur = await getKvkkVersion();
+  const ver = p.data.version.trim();
+  if (ver === cur) return bad(reply, `"${ver}" zaten yürürlükteki sürüm. Metni değiştirmek için "Düzenle" kullanın.`);
+  const updatedAt = new Date().toISOString();
+  const value = JSON.stringify({ title: p.data.title.trim(), body: p.data.body, updatedAt });
+  await prisma.setting.upsert({ where: { key: kvkkDocKey(ver) }, create: { key: kvkkDocKey(ver), value }, update: { value } });
+  await prisma.setting.upsert({ where: { key: KVKK_VERSION_KEY }, create: { key: KVKK_VERSION_KEY, value: ver }, update: { value: ver } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'kvkk', action: 'Yeni KVKK sürümü yayınlandı', detail: `${cur} → ${ver} · ${p.data.title.trim()}` } });
+  return { version: ver, title: p.data.title.trim(), body: p.data.body, updatedAt };
 });
 
 app.post('/api/data-request', { preHandler: requireEmployee }, async (req: any, reply) => {
