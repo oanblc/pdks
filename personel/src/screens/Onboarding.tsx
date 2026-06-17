@@ -41,9 +41,9 @@ const STEPS: Step[] = [
 ];
 
 const PERMS: { perm: PermKind; icon: IconName; title: string; desc: string }[] = [
-  { perm: 'location', icon: 'pin', title: 'Konum', desc: 'Girişin doğru şubede yapıldığını doğrular; vardiya/çıkış hatırlatmaları için “Her zaman” izni önerilir.' },
-  { perm: 'notif', icon: 'bell', title: 'Bildirim', desc: 'Geç giriş, eksik çıkış ve mola hatırlatmaları; izin sonucu bildirimleri.' },
-  { perm: 'camera', icon: 'camera', title: 'Kamera', desc: 'Şube QR’ını okutarak giriş-çıkış yapmak için.' },
+  { perm: 'location', icon: 'pin', title: 'Konum', desc: 'Girişin doğru şubede yapıldığını doğrular; “Her zaman” önerilir.' },
+  { perm: 'notif', icon: 'bell', title: 'Bildirim', desc: 'Geç giriş, eksik çıkış, mola ve izin sonucu bildirimleri.' },
+  { perm: 'camera', icon: 'camera', title: 'Kamera', desc: 'Şube QR’ını okutarak giriş-çıkış için.' },
 ];
 
 export function OnboardingFlow({ start = 0, onComplete }: { start?: number; onComplete: () => void }) {
@@ -134,24 +134,24 @@ function PermsStep({ onNext, request }: { onNext: () => void; request: (p: PermK
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
-        <View style={{ alignItems: 'center', marginBottom: 22, marginTop: 8 }}>
-          <PopIn style={{ width: 84, height: 84, borderRadius: 24, backgroundColor: C.brand50, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="shield" size={40} color={C.brand700} />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 4, paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
+        <View style={{ alignItems: 'center', marginBottom: 14, marginTop: 2 }}>
+          <PopIn style={{ width: 58, height: 58, borderRadius: 17, backgroundColor: C.brand50, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="shield" size={29} color={C.brand700} />
           </PopIn>
-          <T v="h1" center style={{ marginTop: 18 }}>Gerekli izinler</T>
-          <T v="body" color={C.ink2} center style={{ marginTop: 8, maxWidth: 320 }}>puanto’nun düzgün çalışması için üç izne ihtiyaç var. Hepsini buradan verebilirsiniz.</T>
+          <T v="h2" center style={{ marginTop: 12 }}>Gerekli izinler</T>
+          <T v="sm" color={C.ink2} center style={{ marginTop: 6, maxWidth: 320 }}>puanto’nun çalışması için üç izne ihtiyaç var.</T>
         </View>
 
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 9 }}>
           {PERMS.map(({ perm, icon, title, desc }) => {
             const s = st[perm];
             const tone = s === 'granted' ? C.ok : s === 'denied' ? C.warn : C.brand700;
             const bg = s === 'granted' ? C.okBg : s === 'denied' ? C.warnBg : C.brand50;
             return (
-              <View key={perm} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: s === 'denied' ? C.warnRing : C.border, backgroundColor: C.surface }}>
-                <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon name={s === 'granted' ? 'check' : icon} size={22} color={tone} strokeWidth={s === 'granted' ? 2.6 : 1.9} />
+              <View key={perm} style={{ flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: s === 'denied' ? C.warnRing : C.border, backgroundColor: C.surface }}>
+                <View style={{ width: 40, height: 40, borderRadius: 11, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name={s === 'granted' ? 'check' : icon} size={21} color={tone} strokeWidth={s === 'granted' ? 2.6 : 1.9} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <T v="bodyS" style={{ fontSize: 15 }}>{title}</T>
@@ -175,9 +175,9 @@ function PermsStep({ onNext, request }: { onNext: () => void; request: (p: PermK
         )}
       </ScrollView>
 
-      <View style={{ gap: 10, paddingHorizontal: 24, paddingTop: 10, paddingBottom: 24 + insets.bottom, borderTopWidth: 1, borderTopColor: C.border }}>
-        {!allGranted && <Button variant="primary" full height={56} icon="check" iconColor={C.white} label={busy === 'all' ? 'İsteniyor…' : 'Tümüne izin ver'} onPress={busy != null ? undefined : askAll} style={busy != null ? { opacity: 0.6 } : undefined} />}
-        <Button variant={allGranted ? 'primary' : 'quiet'} full={allGranted} height={56} label={allGranted ? 'Devam et' : 'Şimdilik atla'} onPress={onNext} style={{ alignSelf: 'center' }} />
+      <View style={{ gap: 4, paddingHorizontal: 24, paddingTop: 8, paddingBottom: 14 + insets.bottom, borderTopWidth: 1, borderTopColor: C.border }}>
+        {!allGranted && <Button variant="primary" full height={52} icon="check" iconColor={C.white} label={busy === 'all' ? 'İsteniyor…' : 'Tümüne izin ver'} onPress={busy != null ? undefined : askAll} style={busy != null ? { opacity: 0.6 } : undefined} />}
+        <Button variant={allGranted ? 'primary' : 'quiet'} full={allGranted} height={48} label={allGranted ? 'Devam et' : 'Şimdilik atla'} onPress={onNext} style={{ alignSelf: 'center' }} />
       </View>
     </View>
   );
