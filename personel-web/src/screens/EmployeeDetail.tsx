@@ -9,8 +9,6 @@ import { stMap, type Emp } from './Employees'
 type Branch = { id: number; name: string }
 type Shift = { id: number; name: string; start: string; end: string }
 
-const PAGE_MAX = 760
-
 export function EmployeeDetail() {
   // Listeden geçirilen çalışan kaydını bir kez yakala
   const [emp] = useState<Emp | undefined>(() => consumeNavArg() as Emp | undefined)
@@ -47,7 +45,7 @@ export function EmployeeDetail() {
 
   if (!emp) {
     return (
-      <div style={{ maxWidth: PAGE_MAX }}>
+      <div>
         {BackLink}
         <div className="card col" style={{ padding: 24, gap: 14 }}>
           <div className="t-body ink-2">Çalışan kaydı yüklenemedi. Lütfen listeden tekrar seçin.</div>
@@ -101,7 +99,7 @@ export function EmployeeDetail() {
   const st = stMap[emp.status] ?? (['neu', emp.status] as [Tone, string])
 
   return (
-    <div style={{ maxWidth: PAGE_MAX }}>
+    <div>
       {BackLink}
 
       {/* ── Sayfa başlığı: kimlik solda, ana aksiyonlar sağda ── */}
