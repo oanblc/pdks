@@ -99,7 +99,6 @@ export function Timesheet() {
         <StatCard label="Çalışan" value={d?.employees.length ?? 0} sub="bu dönem" icon="user" />
         <StatCard label="Bayraklı kayıt" value={d?.flagged.length ?? 0} sub="inceleme gerekir" tone="warn" icon="alert" />
         <StatCard label="Gecikmiş çözüm" value={overdue} sub="3 günü aştı" tone="err" icon="clock" />
-        <StatCard label="45s aşan hafta" value={d?.overtimeWeeks.length ?? 0} sub="fazla mesai" tone="brand" icon="calendar" />
       </div>
 
       {loading ? <div className="t-body ink-2">Yükleniyor…</div> : (
@@ -121,20 +120,6 @@ export function Timesheet() {
             </Table>
           )}
 
-          {(d?.overtimeWeeks.length ?? 0) > 0 && (
-            <>
-              <div className="t-h3" style={{ margin: '24px 0 12px' }}>Haftalık 45 saat aşımı</div>
-              <Table cols={[{ label: 'ÇALIŞAN', flex: 2 }, { label: 'HAFTA', flex: 1.5 }, { label: 'SAAT', w: 120, align: 'right' }]}>
-                {d!.overtimeWeeks.map((w, i) => (
-                  <Row key={i} i={i} cells={[
-                    { flex: 2, node: <span className="t-body">{w.name}</span> },
-                    { flex: 1.5, node: <span className="t-sm mono ink-2">{w.week}</span> },
-                    { w: 120, align: 'right', node: <span className="t-bodys mono" style={{ color: 'var(--brand-700)' }}>{w.hours} s</span> },
-                  ]} />
-                ))}
-              </Table>
-            </>
-          )}
         </>
       )}
 
