@@ -1,6 +1,6 @@
 // Manager.tsx — B4 Müdür inceleme + PIN + B5 Asistlı manuel okutma
 import React, { useEffect, useState } from 'react';
-import { View, ScrollView, Pressable, Alert, TextInput } from 'react-native';
+import { View, ScrollView, Pressable, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { color as C, radius as R, font, shadow } from '../../theme/tokens';
 import { Icon } from '../../components/Icon';
@@ -10,6 +10,40 @@ import { HistoryScreen } from '../HistoryScreen';
 import { api } from '../../api';
 
 const fmtKey = (s: string) => { const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : s; };
+
+/* ── Ortak sayısal PIN tuş takımı (yalnız rakam, 4-6 hane) ── */
+export function NumKeypad({ pin, setPin, onSubmit, busy = false, error = false, accent = C.brand600, statusText = ' ', minLen = 4, maxLen = 6 }: {
+  pin: string; setPin: (u: (p: string) => string) => void; onSubmit: () => void;
+  busy?: boolean; error?: boolean; accent?: string; statusText?: string; minLen?: number; maxLen?: number;
+}) {
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'ok', '0', 'del'];
+  const push = (k: string) => {
+    if (k === 'del') setPin(p => p.slice(0, -1));
+    else if (k === 'ok') { if (pin.length >= minLen && !busy) onSubmit(); }
+    else setPin(p => (p.length < maxLen && !busy ? p + k : p));
+  };
+  const ready = pin.length >= minLen;
+  return (
+    <View>
+      <View style={{ flexDirection: 'row', gap: 14, justifyContent: 'center', marginTop: 18, marginBottom: 8 }}>
+        {[0, 1, 2, 3, 4, 5].map(i => <View key={i} style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: error ? C.errRing : accent, backgroundColor: i < pin.length ? (error ? C.err : accent) : 'transparent' }} />)}
+      </View>
+      <T v="sm" color={error ? C.err : C.ink3} center style={{ height: 20, marginBottom: 10 }}>{statusText}</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {keys.map((k, i) => (
+          <View key={i} style={{ width: '33.33%', padding: 5 }}>
+            <Pressable disabled={busy || (k === 'ok' && !ready)} onPress={() => push(k)}
+              style={({ pressed }) => [{ height: 56, borderRadius: R.md, alignItems: 'center', justifyContent: 'center', backgroundColor: k === 'ok' ? (ready ? accent : C.surface2) : k === 'del' ? 'transparent' : C.surface2, borderWidth: k === 'del' ? 0 : 1, borderColor: k === 'ok' ? (ready ? accent : C.border) : C.border }, pressed && { opacity: 0.6 }]}>
+              {k === 'del' ? <Icon name="backspace" size={24} color={C.ink2} />
+                : k === 'ok' ? <Icon name="check" size={24} color={ready ? C.white : C.ink3} />
+                  : <T style={{ fontSize: 23, fontFamily: font.medium }}>{k}</T>}
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
 
 /* ── Yönetici PIN (statik, 4-6 hane) ── */
 export function PinPad({ onOk, onClose }: { onOk: () => void; onClose: () => void }) {
@@ -23,13 +57,7 @@ export function PinPad({ onOk, onClose }: { onOk: () => void; onClose: () => voi
       .then(r => { if (r.ok) onOk(); else { setError(true); setPin(''); setBusy(false); } })
       .catch(() => { setError(true); setPin(''); setBusy(false); });
   };
-  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'ok', '0', 'del'];
-  const push = (k: string) => {
-    setError(false);
-    if (k === 'del') setPin(p => p.slice(0, -1));
-    else if (k === 'ok') submit();
-    else setPin(p => (p.length < 6 && !busy ? p + k : p));
-  };
+  const setPinClear = (u: (p: string) => string) => { setError(false); setPin(u); };
   return (
     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(13,20,19,0.55)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 }}>
       <View style={[{ backgroundColor: C.surface, borderRadius: R.xxl, padding: 30, width: 340 }, shadow.lg]}>
@@ -40,63 +68,38 @@ export function PinPad({ onOk, onClose }: { onOk: () => void; onClose: () => voi
           <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: C.brand50, alignItems: 'center', justifyContent: 'center' }}><Icon name="lock" size={26} color={C.brand700} /></View>
           <T v="h3" style={{ marginTop: 10 }}>Yönetici PIN’i</T>
           <T v="sm" color={C.ink3}>İnceleme moduna geçiş · 4-6 hane</T>
-          <View style={{ flexDirection: 'row', gap: 14, marginTop: 18, marginBottom: 8 }}>
-            {[0, 1, 2, 3, 4, 5].map(i => <View key={i} style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: error ? C.errRing : C.brand500, backgroundColor: i < pin.length ? (error ? C.err : C.brand600) : 'transparent' }} />)}
-          </View>
-          <T v="sm" color={error ? C.err : C.ink3} style={{ height: 20, marginBottom: 10 }}>{error ? 'PIN hatalı' : busy ? 'Doğrulanıyor…' : ' '}</T>
         </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-          {keys.map((k, i) => (
-            <View key={i} style={{ width: '33.33%', padding: 5 }}>
-              <Pressable disabled={busy || (k === 'ok' && pin.length < 4)} onPress={() => push(k)}
-                style={({ pressed }) => [{ height: 56, borderRadius: R.md, alignItems: 'center', justifyContent: 'center', backgroundColor: k === 'ok' ? (pin.length >= 4 ? C.brand600 : C.surface2) : k === 'del' ? 'transparent' : C.surface2, borderWidth: k === 'del' ? 0 : 1, borderColor: k === 'ok' ? (pin.length >= 4 ? C.brand600 : C.border) : C.border }, pressed && { opacity: 0.6 }]}>
-                {k === 'del' ? <Icon name="backspace" size={24} color={C.ink2} />
-                  : k === 'ok' ? <Icon name="check" size={24} color={pin.length >= 4 ? C.white : C.ink3} />
-                    : <T style={{ fontSize: 23, fontFamily: font.medium }}>{k}</T>}
-              </Pressable>
-            </View>
-          ))}
-        </View>
+        <NumKeypad pin={pin} setPin={setPinClear} onSubmit={submit} busy={busy} error={error} statusText={error ? 'PIN hatalı' : busy ? 'Doğrulanıyor…' : ' '} />
       </View>
     </View>
   );
 }
 
-/* ── Kiosk'tan çıkış: şube şifresi ── */
+/* ── Kiosk'tan çıkış: kiosk PIN'i (rakam tuş takımı) ── */
 export function ExitPad({ onOk, onClose }: { onOk: () => void; onClose: () => void }) {
-  const [pw, setPw] = useState('');
+  const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const submit = () => {
-    if (!pw || busy) return;
+    if (pin.length < 4 || busy) return;
     setBusy(true); setError(false);
-    api.branchVerifyPassword(pw)
-      .then(r => { if (r.ok) onOk(); else { setError(true); setBusy(false); } })
-      .catch(() => { setError(true); setBusy(false); });
+    api.branchVerifyPassword(pin)
+      .then(r => { if (r.ok) onOk(); else { setError(true); setPin(''); setBusy(false); } })
+      .catch(() => { setError(true); setPin(''); setBusy(false); });
   };
+  const setPinClear = (u: (p: string) => string) => { setError(false); setPin(u); };
   return (
     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(13,20,19,0.55)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 }}>
-      <View style={[{ backgroundColor: C.surface, borderRadius: R.xxl, padding: 28, width: 360 }, shadow.lg]}>
+      <View style={[{ backgroundColor: C.surface, borderRadius: R.xxl, padding: 30, width: 340 }, shadow.lg]}>
         <Pressable onPress={onClose} hitSlop={8} style={{ position: 'absolute', top: 16, right: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="x" size={20} color={C.ink} />
         </Pressable>
-        <View style={{ alignItems: 'center', marginBottom: 18 }}>
+        <View style={{ alignItems: 'center' }}>
           <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: C.errBg, alignItems: 'center', justifyContent: 'center' }}><Icon name="logout" size={26} color={C.errInk} /></View>
           <T v="h3" style={{ marginTop: 10 }}>Kiosk’tan çık</T>
-          <T v="sm" color={C.ink3} center style={{ marginTop: 2 }}>Çıkış için kiosk PIN’ini girin</T>
+          <T v="sm" color={C.ink3} center>Çıkış için kiosk PIN’ini girin · 4-6 hane</T>
         </View>
-        <TextInput
-          value={pw}
-          onChangeText={t => { setPw(t); setError(false); }}
-          secureTextEntry
-          autoFocus
-          placeholder="Kiosk PIN'i"
-          placeholderTextColor={C.ink3}
-          onSubmitEditing={submit}
-          style={{ height: 52, borderRadius: R.md, borderWidth: 1.5, borderColor: error ? C.errRing : C.borderStrong, backgroundColor: C.surface, paddingHorizontal: 15, fontSize: 16, fontFamily: font.regular, color: C.ink }}
-        />
-        <T v="sm" color={C.err} style={{ height: 20, marginTop: 6 }}>{error ? 'PIN hatalı' : ' '}</T>
-        <Button variant="primary" full height={52} label={busy ? 'Doğrulanıyor…' : 'Çıkış yap'} onPress={submit} style={{ marginTop: 6, opacity: busy || !pw ? 0.6 : 1 }} />
+        <NumKeypad pin={pin} setPin={setPinClear} onSubmit={submit} busy={busy} error={error} accent={C.err} statusText={error ? 'PIN hatalı' : busy ? 'Doğrulanıyor…' : ' '} />
       </View>
     </View>
   );

@@ -1,14 +1,15 @@
 // BranchLogin.tsx — B6 Şube kurulum: şube KONUMDAN otomatik algılanır + geofence (50 m)
 import React, { useEffect, useState } from 'react';
-import { View, Pressable } from 'react-native';
+import { View, Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { color as C, radius as R, shadow } from '../../theme/tokens';
 import { Icon, IconName } from '../../components/Icon';
-import { T, Button, TextField, StatusChip, RoundButton, styles as S } from '../../components/ui';
+import { T, StatusChip, RoundButton, styles as S } from '../../components/ui';
 import { Spinner } from '../../components/anim';
 import { distanceMeters, getBranchCenter, setBranchCenter, GEOFENCE_RADIUS_M, LatLng } from '../../lib/geo';
 import { api, setToken } from '../../api';
+import { NumKeypad } from './Manager';
 
 type Issue = null | { kind: 'blocked'; d: number } | { kind: 'denied' } | { kind: 'error' } | { kind: 'cred' } | { kind: 'revoked' };
 
@@ -104,7 +105,7 @@ export function BranchLogin({ onStart, onBack }: { onStart: (branch: string, bra
       <View style={{ paddingTop: 56, paddingHorizontal: 18 }}>
         <RoundButton icon="chevronL" onPress={onBack} bg={C.surface} />
       </View>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, paddingBottom: 20 + insets.bottom }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, paddingVertical: 16, paddingBottom: 20 + insets.bottom }} keyboardShouldPersistTaps="handled">
         <View style={[S.card, { width: '100%', maxWidth: 460, padding: 28 }, shadow.lg]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View style={[{ width: 48, height: 48, borderRadius: 13, backgroundColor: C.brand600, alignItems: 'center', justifyContent: 'center' }, shadow.brand]}>
@@ -147,7 +148,10 @@ export function BranchLogin({ onStart, onBack }: { onStart: (branch: string, bra
               </View>
             </View>
 
-            <TextField label="Kiosk PIN'i" value={pw} onChangeText={setPw} secure placeholder="Panelden belirlenen PIN" mono />
+            <View>
+              <T v="bodyS" color={C.ink2} style={{ fontSize: 13 }}>Kiosk PIN'i</T>
+              <NumKeypad pin={pw} setPin={setPw} onSubmit={() => { if (!checking && !detecting && branch) handleStart(); }} busy={checking} statusText={' '} />
+            </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 }}>
               <Icon name="pin" size={16} color={C.ink3} />
@@ -172,7 +176,7 @@ export function BranchLogin({ onStart, onBack }: { onStart: (branch: string, bra
             <StatusChip status="ok">eşlemeye hazır</StatusChip>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
