@@ -32,7 +32,7 @@ export const ICON_PATHS: Record<string, string> = {
   dots: 'M5 12h.01M12 12h.01M19 12h.01',
 }
 
-export function Icon({ name, size = 24, color = 'currentColor', strokeWidth = 1.75, fill = 'none', style }:
+export function Icon({ name, size = 24, color = 'currentColor', strokeWidth = 1.8, fill = 'none', style }:
   { name: string; size?: number; color?: string; strokeWidth?: number; fill?: string; style?: React.CSSProperties }) {
   const d = ICON_PATHS[name]
   if (!d) return null

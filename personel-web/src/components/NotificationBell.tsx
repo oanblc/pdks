@@ -41,11 +41,10 @@ export function NotificationBell() {
 
   return (
     <div style={{ position: 'relative' }}>
-      <button onClick={() => (open ? setOpen(false) : openPanel())} className="btn"
-        style={{ width: 40, height: 40, padding: 0, borderRadius: 'var(--r-full)', background: open ? 'var(--surface-2)' : 'transparent', position: 'relative' }} title="Bildirimler">
-        <Icon name="bell" size={20} color="var(--ink-2)" />
+      <button onClick={() => (open ? setOpen(false) : openPanel())} className="tb-icon" title="Bildirimler">
+        <Icon name="bell" size={18} color="var(--ink-3)" strokeWidth={1.8} />
         {unread > 0 && (
-          <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 9, background: 'var(--err)', color: '#fff', fontSize: 10.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--surface)' }}>{unread > 9 ? '9+' : unread}</span>
+          <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 9, background: 'var(--err)', color: '#fff', fontSize: 10.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--surface)' }}>{unread > 9 ? '9+' : unread}</span>
         )}
       </button>
 

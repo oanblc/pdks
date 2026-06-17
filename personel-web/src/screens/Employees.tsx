@@ -54,50 +54,51 @@ export function Employees() {
 
   return (
     <div>
-      <PageHead title="Çalışanlar" subtitle={`${emps.length} çalışan · canlı veri`}
+      <PageHead title="Çalışanlar"
+        subtitle={<span className="rowx gap8"><span>{emps.length} çalışan</span><span style={{ color: '#c2cdde' }}>·</span><span className="rowx gap6"><span className="live-dot" />canlı veri</span></span>}
         actions={<>
-          <button className="btn btn-ghost" style={{ height: 44 }} onClick={exportCsv}><Icon name="doc" size={18} color="var(--ink)" /> Dışa aktar</button>
-          <button className="btn btn-primary" style={{ height: 44 }} onClick={() => setInvite(true)}><Icon name="plus" size={19} color="#fff" /> Çalışan davet et</button>
+          <button className="btn btn-ghost" onClick={exportCsv}><Icon name="doc" size={16} /> Dışa aktar</button>
+          <button className="btn btn-primary" onClick={() => setInvite(true)}><Icon name="plus" size={16} strokeWidth={2} /> Çalışan davet et</button>
         </>} />
 
-      <div className="rowx between" style={{ marginBottom: 16, gap: 12 }}>
-        <SearchInput placeholder="İsim, sicil no veya departman ara…" width={340} value={q} onChange={setQ} />
-        <select className="input" value={branch} onChange={e => setBranch(e.target.value)} style={{ width: 220, height: 44 }}>
+      <div className="rowx gap12" style={{ marginBottom: 13 }}>
+        <SearchInput placeholder="İsim, sicil no veya departman ara…" width="100%" value={q} onChange={setQ} />
+        <select className="input" value={branch} onChange={e => setBranch(e.target.value)} style={{ width: 200, flex: 'none' }}>
           {branches.map(b => <option key={b} value={b}>{b === 'Tümü' ? 'Tüm şubeler' : b}</option>)}
         </select>
       </div>
 
       {pending > 0 && (
-        <div className="rowx between" style={{ padding: '13px 18px', borderRadius: 'var(--r-lg)', background: 'var(--warn-bg)', border: '1px solid var(--warn-ring)', marginBottom: 14 }}>
-          <div className="rowx gap10"><Icon name="info" size={20} color="var(--warn-ink)" /><span className="t-sm" style={{ color: 'var(--warn-ink)', fontWeight: 600 }}>{pending} çalışan kayıt onayı bekliyor</span></div>
-          <span className="t-cap" style={{ color: 'var(--warn-ink)' }}>Aşağıdan "Kaydı onayla" ile onaylayın</span>
+        <div className="rowx gap10" style={{ padding: '10px 14px', borderRadius: 11, background: 'var(--warn-bg)', border: '1px solid var(--warn-ring)', marginBottom: 13 }}>
+          <Icon name="info" size={17} color="var(--warn)" />
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--warn-ink)' }}>{pending} çalışan kayıt onayı bekliyor</span>
+          <span className="t-cap" style={{ color: '#a98a4d', marginLeft: 'auto' }}>Satırdaki <strong style={{ color: 'var(--warn-ink)' }}>Kaydı onayla</strong> ile onaylayın</span>
         </div>
       )}
 
       {loading ? <div className="t-body ink-2">Yükleniyor…</div> : (
-        <Table cols={[{ label: 'ÇALIŞAN', flex: 2.4 }, { label: 'ŞUBE', flex: 1.4 }, { label: 'DEPARTMAN', flex: 1.2 }, { label: 'ROL', flex: 1.4 }, { label: 'DURUM', flex: 1.3 }, { label: '', w: 48, align: 'right' }]}>
+        <Table cols={[{ label: 'Çalışan', flex: 2.4 }, { label: 'Şube', flex: 1.4 }, { label: 'Departman', flex: 1.2 }, { label: 'Rol', flex: 1.4 }, { label: 'Durum', flex: 1.3, align: 'right' }]}>
           {rows.map((e, i) => (
-            <Row key={e.id} i={i} onClick={() => goto('employeeDetail', e)} cells={[
+            <Row key={e.id} i={i} bg={e.status === 'pending' ? '#FFFCF5' : undefined} onClick={() => goto('employeeDetail', e)} cells={[
               { flex: 2.4, node: (
                 <div className="rowx gap12">
                   <Avatar name={e.name} size={38} />
-                  <div style={{ minWidth: 0 }}><div className="rowx gap6" style={{ alignItems: 'center' }}><span className="t-bodys" style={{ fontSize: 15, whiteSpace: 'nowrap' }}>{e.name}</span>{e.isManager && <StatusChip status="brand">Yetkili</StatusChip>}</div><div className="t-cap ink-3 mono" style={{ whiteSpace: 'nowrap' }}>SİCİL {e.sicil || '—'}{e.status === 'active' && e.leave ? ` · İZİN ${e.leave.remaining}/${e.leave.entitlement} GÜN` : ''}</div></div>
+                  <div style={{ minWidth: 0 }}><div className="rowx gap8" style={{ alignItems: 'center' }}><span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap' }}>{e.name}</span>{e.isManager && <StatusChip status="ok">Yetkili</StatusChip>}</div><div className="t-cap ink-4 mono" style={{ whiteSpace: 'nowrap', marginTop: 3 }}>SİCİL {e.sicil || '—'}{e.status === 'active' && e.leave ? ` · İZİN ${e.leave.remaining}/${e.leave.entitlement} GÜN` : ''}</div></div>
                 </div>) },
               { flex: 1.4, node: <span className="t-body ink-2">{e.branch || '—'}</span> },
-              { flex: 1.2, node: <span className="t-body ink-2">{e.dept || '—'}</span> },
-              { flex: 1.4, node: <span className="t-body">{e.role || '—'}</span> },
-              { flex: 1.3, node: e.status === 'pending'
-                ? <button className="btn" disabled={busy === e.id} onClick={ev => { ev.stopPropagation(); approve(e.id) }} style={{ height: 34, padding: '0 12px', borderRadius: 'var(--r-sm)', background: 'var(--warn-bg)', color: 'var(--warn-ink)', border: '1px solid var(--warn-ring)', fontSize: 13, opacity: busy === e.id ? 0.6 : 1 }}>{busy === e.id ? 'Onaylanıyor…' : 'Kaydı onayla'}</button>
+              { flex: 1.2, node: <span className="t-body" style={{ color: e.dept ? 'var(--ink-2)' : 'var(--ink-4)' }}>{e.dept || '—'}</span> },
+              { flex: 1.4, node: <span className="t-body" style={{ color: e.role ? 'var(--ink-2)' : 'var(--ink-4)' }}>{e.role || '—'}</span> },
+              { flex: 1.3, align: 'right', node: <div className="rowx" style={{ justifyContent: 'flex-end' }}>{e.status === 'pending'
+                ? <button className="btn" disabled={busy === e.id} onClick={ev => { ev.stopPropagation(); approve(e.id) }} style={{ height: 30, padding: '0 12px', borderRadius: 8, background: 'var(--warn-bg2)', color: '#8A5E0A', border: '1px solid var(--warn-ring2)', fontSize: 12.5, gap: 6, opacity: busy === e.id ? 0.6 : 1 }}><Icon name="check" size={13} strokeWidth={2.2} />{busy === e.id ? 'Onaylanıyor…' : 'Kaydı onayla'}</button>
                 : e.status === 'active' && e.onLeaveToday
                   ? <StatusChip status="neu">Bugün izinli</StatusChip>
-                  : <StatusChip status={stMap[e.status]?.[0] ?? 'neu'}>{stMap[e.status]?.[1] ?? e.status}</StatusChip> },
-              { w: 48, align: 'right', node: <button className="btn" onClick={ev => { ev.stopPropagation(); goto('employeeDetail', e) }} title="Düzenle" style={{ width: 34, height: 34, padding: 0, borderRadius: 'var(--r-sm)', background: 'transparent' }}><Icon name="dots" size={18} color="var(--ink-3)" /></button> },
+                  : <StatusChip status={stMap[e.status]?.[0] ?? 'neu'}>{stMap[e.status]?.[1] ?? e.status}</StatusChip>}</div> },
             ]} />
           ))}
         </Table>
       )}
-      {!loading && <div className="rowx between" style={{ marginTop: 14 }}>
-        <span className="t-cap ink-3">{rows.length} / {emps.length} çalışan gösteriliyor</span>
+      {!loading && <div className="rowx between" style={{ marginTop: 13 }}>
+        <span className="t-cap ink-4">{rows.length} / {emps.length} çalışan gösteriliyor</span>
       </div>}
 
       {invite && <InviteModal onClose={() => setInvite(false)} onDone={() => { setInvite(false); load() }} />}

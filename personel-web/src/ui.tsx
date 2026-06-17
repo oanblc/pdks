@@ -21,12 +21,12 @@ export function Avatar({ name = '', size = 44, src, ring = false, style }:
   )
 }
 
-export function PageHead({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode }) {
+export function PageHead({ title, subtitle, actions }: { title: string; subtitle?: React.ReactNode; actions?: React.ReactNode }) {
   return (
-    <div className="rowx between" style={{ marginBottom: 22, gap: 16 }}>
+    <div className="rowx between" style={{ marginBottom: 18, gap: 16, alignItems: 'flex-start' }}>
       <div>
-        <div className="t-h1" style={{ fontSize: 26 }}>{title}</div>
-        {subtitle && <div className="t-body ink-2" style={{ marginTop: 4 }}>{subtitle}</div>}
+        <div className="t-h1">{title}</div>
+        {subtitle && <div className="t-sm ink-3" style={{ marginTop: 5 }}>{subtitle}</div>}
       </div>
       {actions && <div className="rowx gap10">{actions}</div>}
     </div>
@@ -35,29 +35,32 @@ export function PageHead({ title, subtitle, actions }: { title: string; subtitle
 
 export function StatCard({ label, value, sub, tone = 'ink', icon }:
   { label: string; value: React.ReactNode; sub?: string; tone?: string; icon?: string }) {
+  const isInk = tone === 'ink'
+  const iconBg = isInk ? 'var(--brand-50)' : tone === 'warn' ? 'var(--warn-bg2)' : `var(--${tone}-bg)`
+  const iconColor = isInk ? 'var(--brand-600)' : `var(--${tone})`
+  const valueColor = isInk ? 'var(--ink)' : `var(--${tone})`
   return (
-    <div className="card" style={{ flex: 1, padding: 18 }}>
-      <div className="rowx between" style={{ alignItems: 'flex-start' }}>
-        <div className="t-sm ink-2">{label}</div>
-        {icon && <div style={{ width: 34, height: 34, borderRadius: 10, background: `var(--${tone === 'ink' ? 'surface-2' : tone + '-bg'})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone === 'ink' ? 'var(--ink-2)' : `var(--${tone}-ink)` }}><Icon name={icon} size={19} /></div>}
+    <div className="card" style={{ flex: 1, padding: '15px 16px', borderRadius: 'var(--r-md)' }}>
+      <div className="rowx between" style={{ marginBottom: 10 }}>
+        <span className="t-mono-label">{label}</span>
+        {icon && <span style={{ width: 30, height: 30, borderRadius: 8, background: iconBg, color: iconColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><Icon name={icon} size={16} strokeWidth={1.8} /></span>}
       </div>
-      <div className="t-h1 tnum" style={{ fontSize: 32, marginTop: 8, color: tone === 'ink' ? 'var(--ink)' : `var(--${tone}-ink)` }}>{value}</div>
-      {sub && <div className="t-cap ink-3" style={{ marginTop: 4 }}>{sub}</div>}
+      <div className="tnum" style={{ fontSize: 29, fontWeight: 800, lineHeight: 1, letterSpacing: '-.02em', color: valueColor }}>{value}</div>
+      {sub && <div className="t-cap ink-4" style={{ marginTop: 5 }}>{sub}</div>}
     </div>
   )
 }
 
 export function SearchInput({ placeholder = 'Ara…', width = 280, value, onChange }:
-  { placeholder?: string; width?: number; value?: string; onChange?: (v: string) => void }) {
+  { placeholder?: string; width?: number | string; value?: string; onChange?: (v: string) => void }) {
   return (
-    <div className="input rowx gap10" style={{ width, height: 44, background: 'var(--surface)' }}>
-      <Icon name="search" size={18} color="var(--ink-3)" strokeWidth={2} />
+    <div className="input rowx gap8" style={{ width, height: 40 }}>
+      <Icon name="search" size={16} color="var(--ink-4)" strokeWidth={1.9} />
       <input
-        className="t-sm"
         value={value ?? ''}
         onChange={e => onChange?.(e.target.value)}
         placeholder={placeholder}
-        style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--ink)' }}
+        style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: '#26344a', fontFamily: 'inherit', fontSize: 13.5 }}
       />
     </div>
   )
@@ -68,15 +71,15 @@ export function Modal({ title, onClose, footer, children, width = 460 }:
   return (
     <div
       onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,23,32,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,27,45,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
     >
       <div
         className="card"
         onClick={e => e.stopPropagation()}
-        style={{ width, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', padding: 0, display: 'flex', flexDirection: 'column' }}
+        style={{ width, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', padding: 0, display: 'flex', flexDirection: 'column', boxShadow: 'var(--sh-lg)' }}
       >
-        <div className="rowx between" style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
-          <div className="t-h3" style={{ fontSize: 17 }}>{title}</div>
+        <div className="rowx between" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+          <div className="t-h3">{title}</div>
           <button className="btn" onClick={onClose} style={{ width: 32, height: 32, padding: 0, borderRadius: 'var(--r-sm)', background: 'transparent' }}><Icon name="x" size={18} color="var(--ink-3)" /></button>
         </div>
         <div className="col" style={{ padding: 22, gap: 14 }}>{children}</div>
@@ -123,8 +126,8 @@ type Cell = { node: React.ReactNode; flex?: number; w?: number; align?: 'left' |
 export function Table({ cols, children }: { cols: Col[]; children: React.ReactNode }) {
   return (
     <div className="card" style={{ overflow: 'hidden' }}>
-      <div className="rowx" style={{ padding: '12px 18px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
-        {cols.map((c, i) => <span key={i} className="t-mono-label ink-3" style={{ flex: c.flex || (c.w ? 'none' : 1), width: c.w, textAlign: c.align || 'left' }}>{c.label}</span>)}
+      <div className="rowx gap14" style={{ padding: '11px 18px', background: 'var(--surface-3)', borderBottom: '1px solid #EEF2F8' }}>
+        {cols.map((c, i) => <span key={i} className="t-mono-label" style={{ flex: c.flex || (c.w ? 'none' : 1), width: c.w, textAlign: c.align || 'left' }}>{c.label}</span>)}
       </div>
       {children}
     </div>
@@ -133,8 +136,8 @@ export function Table({ cols, children }: { cols: Col[]; children: React.ReactNo
 
 export function Row({ cells, i, bg, onClick }: { cells: Cell[]; i: number; bg?: string; onClick?: () => void }) {
   return (
-    <div className={'rowx' + (onClick ? ' row-click' : '')} onClick={onClick}
-      style={{ padding: '13px 18px', borderTop: i ? '1px solid var(--border)' : 'none', background: bg || 'transparent', cursor: onClick ? 'pointer' : undefined }}>
+    <div className={'rowx gap14' + (onClick ? ' row-click' : '')} onClick={onClick}
+      style={{ padding: '13px 18px', borderTop: i ? '1px solid #F1F4F9' : 'none', background: bg || 'transparent', cursor: onClick ? 'pointer' : undefined }}>
       {cells.map((c, j) => <div key={j} style={{ flex: c.flex || (c.w ? 'none' : 1), width: c.w, textAlign: c.align || 'left', minWidth: 0 }}>{c.node}</div>)}
     </div>
   )

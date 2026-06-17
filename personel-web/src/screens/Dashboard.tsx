@@ -24,55 +24,66 @@ export function Dashboard() {
 
   return (
     <div>
-      <PageHead title="Genel Bakış" subtitle="Çalışan PDKS · şirket geneli · canlı veri"
+      <PageHead title="Genel Bakış"
+        subtitle={<span className="rowx gap8" style={{ flexWrap: 'wrap' }}><span>Çalışan PDKS</span><span style={{ color: '#c2cdde' }}>·</span><span>şirket geneli</span><span style={{ color: '#c2cdde' }}>·</span><span className="rowx gap6"><span className="live-dot" />canlı veri</span></span>}
         actions={<>
-          <button className="btn btn-ghost" style={{ height: 44 }} onClick={() => { setD(null); api.dashboard().then(setD as any) }}><Icon name="refresh" size={18} color="var(--ink)" /> Yenile</button>
+          <button className="btn btn-ghost" onClick={() => { setD(null); api.dashboard().then(setD as any) }}><Icon name="refresh" size={16} /> Yenile</button>
         </>} />
 
-      <div className="rowx gap14" style={{ marginBottom: 16 }}>
+      <div className="rowx gap12" style={{ marginBottom: 14, alignItems: 'stretch' }}>
         <StatCard label="Aktif şube" value={stats.branches} sub="kayıtlı şube" icon="building" />
         <StatCard label="Bugün okutma" value={stats.todayPunches} sub="şirket geneli" tone="ok" icon="qr" />
-        <StatCard label="Aktif çalışan" value={stats.activeEmployees} sub="onaylı" icon="user" />
+        <StatCard label="Aktif çalışan" value={stats.activeEmployees} sub="onaylı" tone="ok" icon="user" />
         <StatCard label="Onay bekleyen" value={stats.pendingEmployees} sub="kayıt onayı" tone="warn" icon="alert" />
       </div>
 
       {stats.pendingEmployees > 0 && (
-        <div className="card" style={{ padding: 0, marginBottom: 22, overflow: 'hidden' }}>
-          <div className="row">
-            <div style={{ width: 34, height: 34, borderRadius: 9, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}><Icon name="info" size={18} /></div>
-            <div className="grow"><div className="t-bodys" style={{ fontSize: 15 }}>{stats.pendingEmployees} çalışan kayıt onayı bekliyor</div><div className="t-cap ink-3" style={{ marginTop: 1 }}>Çalışanlar bölümünden inceleyip onaylayın</div></div>
-            <StatusChip status="warn">İnceleme</StatusChip>
+        <div className="rowx gap12" style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn-ring)', borderRadius: 13, padding: '12px 14px', marginBottom: 16 }}>
+          <span style={{ width: 34, height: 34, flex: 'none', borderRadius: 9, background: 'var(--warn-bg2)', color: 'var(--warn)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="info" size={18} /></span>
+          <div className="grow" style={{ minWidth: 0, lineHeight: 1.3 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--warn-ink)' }}>{stats.pendingEmployees} çalışan kayıt onayı bekliyor</div>
+            <div className="t-cap" style={{ color: '#9c7a3a' }}>Çalışanlar bölümünden inceleyip onaylayın.</div>
           </div>
+          <button className="btn" onClick={() => goto('employees')} style={{ height: 34, padding: '0 14px', background: 'var(--warn)', color: '#fff', fontSize: 12.5 }}>İncele <Icon name="chevron" size={14} strokeWidth={2} /></button>
         </div>
       )}
 
-      <div className="rowx between" style={{ marginBottom: 14 }}>
-        <div className="t-h3">Şubeler</div>
-        <SearchInput placeholder="Şube ara…" width={240} value={q} onChange={setQ} />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="rowx between" style={{ gap: 12, padding: '15px 16px 13px', borderBottom: '1px solid #EEF2F8' }}>
+          <div className="rowx gap8" style={{ alignItems: 'baseline' }}>
+            <span className="t-h3" style={{ fontSize: 15.5 }}>Şubeler</span>
+            <span className="t-cap ink-4">{d.branches.length} kayıtlı</span>
+          </div>
+          <SearchInput placeholder="Şube ara…" width={240} value={q} onChange={setQ} />
+        </div>
         {branches.map(b => (
-          <div key={b.id} className="card row-press" style={{ padding: 16, cursor: 'pointer' }} onClick={() => goto('branches', b.id)}>
-            <div className="rowx between">
-              <div style={{ minWidth: 0 }}>
-                <div className="t-bodys" style={{ fontSize: 15.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</div>
-                <div className="t-cap ink-3" style={{ marginTop: 1 }}>{b.city}</div>
+          <div key={b.id} className="rowx gap14 row-click" style={{ padding: '14px 16px', borderTop: '1px solid #F1F4F9', cursor: 'pointer' }} onClick={() => goto('branches', b.id)}>
+            <span style={{ width: 42, height: 42, flex: 'none', borderRadius: 11, background: '#EEF2F9', color: 'var(--ink-3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="building" size={20} strokeWidth={1.7} /></span>
+            <div style={{ minWidth: 150 }}>
+              <div className="rowx gap8">
+                <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ink)' }}>{b.name}</span>
+                <StatusChip status={b.online ? 'ok' : 'neu'}>{b.online ? 'Online' : 'Çevrimdışı'}</StatusChip>
               </div>
-              <StatusChip status={b.online ? 'ok' : 'warn'}>{b.online ? 'Online' : 'Çevrimdışı'}</StatusChip>
+              <div className="t-cap ink-4" style={{ marginTop: 2 }}>{b.city}</div>
             </div>
-            <div className="rowx" style={{ marginTop: 14, gap: 0 }}>
-              {([['Bugün', b.today, 'ink'], ['Bayraklı', b.flagged, b.flagged ? 'warn' : 'ink'], ['Manuel', b.anomaly, b.anomaly ? 'warn' : 'ink']] as const).map(([k, v, t], i) => (
-                <div key={i} style={{ flex: 1, borderLeft: i ? '1px solid var(--border)' : 'none', paddingLeft: i ? 12 : 0 }}>
-                  <div className="t-h3 tnum" style={{ color: t === 'ink' ? 'var(--ink)' : `var(--${t}-ink)` }}>{v}</div>
-                  <div className="t-cap ink-3" style={{ fontSize: 11 }}>{k}</div>
+            <div className="rowx" style={{ marginLeft: 24 }}>
+              {([['Bugün', b.today], ['Bayraklı', b.flagged], ['Manuel', b.anomaly]] as const).map(([k, v], i) => (
+                <div key={i} className="rowx">
+                  {i > 0 && <div style={{ width: 1, height: 30, background: '#EAEFF6' }} />}
+                  <div style={{ textAlign: 'center', padding: '0 18px' }}>
+                    <div className="tnum" style={{ fontSize: 18, fontWeight: 800, color: 'var(--ink)' }}>{v}</div>
+                    <div className="t-mono-label" style={{ fontSize: 10, marginTop: 2, color: 'var(--ink-4)' }}>{k}</div>
+                  </div>
                 </div>
               ))}
             </div>
-            <div className="rowx gap6" style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-              <Icon name="refresh" size={14} color="var(--ink-3)" /><span className="t-cap ink-3" style={{ whiteSpace: 'nowrap' }}>son eşitleme {b.sync}</span>
+            <div className="rowx gap16" style={{ marginLeft: 'auto' }}>
+              <span className="rowx gap6 t-cap ink-4" style={{ whiteSpace: 'nowrap' }}><Icon name="refresh" size={13} strokeWidth={2} />son eşitleme {b.sync}</span>
+              <span className="rowx gap4" style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-600)', whiteSpace: 'nowrap' }}>Yönet <Icon name="chevron" size={14} strokeWidth={2.1} /></span>
             </div>
           </div>
         ))}
+        {branches.length === 0 && <div style={{ padding: '34px 16px', textAlign: 'center' }} className="t-sm ink-4">"{q}" ile eşleşen şube yok.</div>}
       </div>
     </div>
   )
