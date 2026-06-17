@@ -189,7 +189,7 @@ function BranchDetailPage({ branch, devices, busy, onBack, onReload, onPair, onE
               </div>
             : <button className="btn btn-ghost" onClick={() => setPinEdit(true)} style={{ height: 36, whiteSpace: 'nowrap', flex: 'none' }}>Düzenle</button>}
         </div>
-        <div className="t-cap ink-4" style={{ marginTop: 10, lineHeight: 1.5 }}>Kiosk'ta <b>"Yönetici"</b> inceleme moduna giriş bu PIN ile yapılır. Kiosk'tan <b>çıkış</b> ise şube şifresini gerektirir.</div>
+        <div className="t-cap ink-4" style={{ marginTop: 10, lineHeight: 1.5 }}>Kiosk'u <b>açma</b>, <b>"Yönetici"</b> inceleme moduna geçme ve kiosktan <b>çıkış</b> — hepsi bu PIN ile yapılır.</div>
       </div>
 
       {/* Cihazlar */}
@@ -308,9 +308,9 @@ function AddBranchModal({ onClose, onDone }: { onClose: () => void; onDone: () =
       <Field label="ŞUBE ADI"><input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Şube adı" /></Field>
       <Field label="ŞEHİR"><input className="input" value={city} onChange={e => setCity(e.target.value)} placeholder="Şehir" /></Field>
       <Field label="KULLANICI ADI"><input className="input" value={username} onChange={e => setUsername(e.target.value)} placeholder="Kiosk kullanıcı adı" /></Field>
-      <Field label="ŞİFRE"><input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Kiosk şifresi (çıkışta da gerekir)" /></Field>
+      <Field label="ŞİFRE (YEDEK)"><input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Kiosk için yedek şifre" /></Field>
       <Field label="KİOSK PIN (4-6 HANE)"><input className="input mono" value={kioskPin} onChange={e => setKioskPin(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="boş bırakılırsa 1234" /></Field>
-      <div className="t-cap ink-3" style={{ padding: '2px 2px 0', lineHeight: 1.5 }}>Kiosk'ta <b>yönetici inceleme moduna</b> giriş bu PIN ile yapılır (her zaman bu sayfadan görüp değiştirebilirsiniz). Kiosk'tan <b>çıkış</b> ise yukarıdaki <b>şube şifresini</b> gerektirir.</div>
+      <div className="t-cap ink-3" style={{ padding: '2px 2px 0', lineHeight: 1.5 }}>Kiosk'u <b>açma</b>, <b>yönetici inceleme moduna</b> geçme ve kiosktan <b>çıkış</b> — hepsi bu <b>PIN</b> ile yapılır (bu sayfadan görüp değiştirebilirsiniz). Şifre yalnız yedek olarak çalışır.</div>
     </Modal>
   )
 }

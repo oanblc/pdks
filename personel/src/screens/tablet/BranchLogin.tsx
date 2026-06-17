@@ -22,7 +22,7 @@ function detectBranchName(_here: LatLng): string {
 
 export function BranchLogin({ onStart, onBack }: { onStart: (branch: string, branchId?: number, deviceCode?: string) => void; onBack: () => void }) {
   const insets = useSafeAreaInsets();
-  const [pw, setPw] = useState('sube123');
+  const [pw, setPw] = useState('');
   const [detecting, setDetecting] = useState(true);
   const [branch, setBranch] = useState<string | null>(null);
   const [detectErr, setDetectErr] = useState<null | 'denied' | 'error'>(null);
@@ -84,7 +84,7 @@ export function BranchLogin({ onStart, onBack }: { onStart: (branch: string, bra
       blocked: { icon: 'pin', title: 'Şube konumunda değilsiniz', body: `Kiosk yalnızca şube konumunda (${GEOFENCE_RADIUS_M} m) açılır. Şu an ~${(issue as any).d} m uzaktasınız.` },
       denied: { icon: 'alert', title: 'Konum izni gerekli', body: 'Kiosk konum doğrulaması için cihaz konum iznini verin.' },
       error: { icon: 'alert', title: 'Konum alınamadı', body: 'Konum servisinin açık olduğundan emin olup tekrar deneyin.' },
-      cred: { icon: 'lock', title: 'Şube girişi başarısız', body: 'Şube şifresi hatalı. Tekrar deneyin.' },
+      cred: { icon: 'lock', title: 'Şube girişi başarısız', body: 'Kiosk PIN’i hatalı. Panelden belirlenen PIN’i girin.' },
       revoked: { icon: 'shield', title: 'Cihaz iptal edilmiş', body: 'Bu tablet panelden uzaktan iptal edilmiş. Kiosk açılamaz; yöneticinizle iletişime geçin.' },
     };
     const m = map[issue.kind];
@@ -147,7 +147,7 @@ export function BranchLogin({ onStart, onBack }: { onStart: (branch: string, bra
               </View>
             </View>
 
-            <TextField label="Şifre" value={pw} onChangeText={setPw} secure placeholder="••••••••••" mono />
+            <TextField label="Kiosk PIN'i" value={pw} onChangeText={setPw} secure placeholder="Panelden belirlenen PIN" mono />
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 }}>
               <Icon name="pin" size={16} color={C.ink3} />

@@ -502,12 +502,21 @@ async function requireBranchOrAdmin(req: any, reply: any) {
 }
 function hmd(d: Date) { return new Date(d).toTimeString().slice(0, 5); }
 
+// Kiosk gizli doğrulaması: panelden belirlenen kiosk PIN'i (managerPin, düz metin) VEYA eski şube şifresi (yedek)
+const isPlainPin = (s?: string | null) => !!s && !String(s).startsWith('$2');
+async function branchSecretOk(br: { passwordHash: string | null; managerPin: string | null } | null, secret: string): Promise<boolean> {
+  if (!br) return false;
+  if (isPlainPin(br.managerPin) && secret === br.managerPin) return true;
+  if (br.passwordHash && (await bcrypt.compare(secret, br.passwordHash))) return true;
+  return false;
+}
+
 app.post('/api/branch/login', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
   const p = z.object({ username: z.string().min(1), password: z.string().min(1), deviceCode: z.string().optional() }).safeParse(req.body);
   if (!p.success) return bad(reply, 'Kullanıcı adı ve şifre gerekli');
   const br = await prisma.branch.findUnique({ where: { username: p.data.username } });
-  if (!br || !br.passwordHash || !(await bcrypt.compare(p.data.password, br.passwordHash)))
-    return reply.code(401).send({ error: 'Kullanıcı adı veya şifre hatalı' });
+  if (!br || !(await branchSecretOk(br, p.data.password)))
+    return reply.code(401).send({ error: 'Kiosk PIN’i (veya şube şifresi) hatalı' });
 
   // Cihaz kimliği gönderildiyse: bu şubeye ait + iptal edilmemiş olmalı.
   let device: { id: number; code: string; backup: boolean } | null = null;
@@ -804,7 +813,7 @@ app.post('/api/branch/verify-password', { preHandler: requireBranch, config: { r
   const p = z.object({ password: z.string().min(1) }).safeParse(req.body);
   if (!p.success) return bad(reply, 'Parola gerekli');
   const br = await prisma.branch.findUnique({ where: { id: req.user.sub } });
-  const ok = !!br?.passwordHash && (await bcrypt.compare(p.data.password, br.passwordHash));
+  const ok = await branchSecretOk(br, p.data.password); // kiosk PIN'i veya eski şube şifresi
   return { ok };
 });
 

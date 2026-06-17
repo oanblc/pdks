@@ -83,19 +83,19 @@ export function ExitPad({ onOk, onClose }: { onOk: () => void; onClose: () => vo
         <View style={{ alignItems: 'center', marginBottom: 18 }}>
           <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: C.errBg, alignItems: 'center', justifyContent: 'center' }}><Icon name="logout" size={26} color={C.errInk} /></View>
           <T v="h3" style={{ marginTop: 10 }}>Kiosk’tan çık</T>
-          <T v="sm" color={C.ink3} center style={{ marginTop: 2 }}>Çıkış için şube şifresini girin</T>
+          <T v="sm" color={C.ink3} center style={{ marginTop: 2 }}>Çıkış için kiosk PIN’ini girin</T>
         </View>
         <TextInput
           value={pw}
           onChangeText={t => { setPw(t); setError(false); }}
           secureTextEntry
           autoFocus
-          placeholder="Şube şifresi"
+          placeholder="Kiosk PIN'i"
           placeholderTextColor={C.ink3}
           onSubmitEditing={submit}
           style={{ height: 52, borderRadius: R.md, borderWidth: 1.5, borderColor: error ? C.errRing : C.borderStrong, backgroundColor: C.surface, paddingHorizontal: 15, fontSize: 16, fontFamily: font.regular, color: C.ink }}
         />
-        <T v="sm" color={C.err} style={{ height: 20, marginTop: 6 }}>{error ? 'Şifre hatalı' : ' '}</T>
+        <T v="sm" color={C.err} style={{ height: 20, marginTop: 6 }}>{error ? 'PIN hatalı' : ' '}</T>
         <Button variant="primary" full height={52} label={busy ? 'Doğrulanıyor…' : 'Çıkış yap'} onPress={submit} style={{ marginTop: 6, opacity: busy || !pw ? 0.6 : 1 }} />
       </View>
     </View>
