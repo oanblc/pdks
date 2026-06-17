@@ -3,36 +3,36 @@
 import { Platform, TextStyle, ViewStyle } from 'react-native';
 
 export const color = {
-  // — Marka (derin teal) —
-  brand50: '#e8f2f2',
-  brand100: '#c8e2e2',
-  brand200: '#97c8c8',
-  brand300: '#5fa9a9',
-  brand500: '#138181',
-  brand600: '#0e6b6b', // PRIMARY
-  brand700: '#0b5555',
-  brand800: '#083f3f',
-  brand: '#0e6b6b',
-  brandBg: '#e8f2f2',
-  brandInk: '#0b5555',
-  brandRing: '#c8e2e2',
+  // — Marka (mavi vurgu — web ile aynı) —
+  brand50: '#EAF0FE',
+  brand100: '#E0EBFB',
+  brand200: '#D7E3FC',
+  brand300: '#9FC0F0',
+  brand500: '#2B5CE6',
+  brand600: '#2B5CE6', // PRIMARY
+  brand700: '#2049C9',
+  brand800: '#18379A',
+  brand: '#2B5CE6',
+  brandBg: '#EAF0FE',
+  brandInk: '#2049C9',
+  brandRing: '#D7E3FC',
 
-  // — Nötr (soğuk, çok düşük doygunluk) —
-  bg: '#eef1f1',
+  // — Nötr (soğuk gri-mavi) —
+  bg: '#F1F4F9',
   surface: '#ffffff',
-  surface2: '#f6f8f8',
-  surface3: '#eef2f2',
-  border: '#e4e9e9',
-  borderStrong: '#d2dada',
-  ink: '#15201f',
-  ink2: '#51605d',
-  ink3: '#899593',
+  surface2: '#F7F9FC',
+  surface3: '#FAFBFD',
+  border: '#E7ECF4',
+  borderStrong: '#E0E6F0',
+  ink: '#0F1B2D',
+  ink2: '#3d4d66',
+  ink3: '#5A6B85',
 
-  // — Durum semantiği (HER YÜZEYDE AYNI) —
-  ok: '#1f8a5b', okBg: '#e6f4ec', okInk: '#155e3e', okRing: '#b6e0c9',
-  warn: '#b3730c', warnBg: '#faf0db', warnInk: '#75490a', warnRing: '#ecd29a',
-  neu: '#6b7775', neuBg: '#eef1f1', neuInk: '#434c4b', neuRing: '#d8dede',
-  err: '#c5372b', errBg: '#fbeae8', errInk: '#8d251c', errRing: '#eebcb6',
+  // — Durum semantiği (web ile aynı) —
+  ok: '#15A06B', okBg: '#E7F4EE', okInk: '#15805A', okRing: '#CDEADD',
+  warn: '#B5780C', warnBg: '#FFF8EC', warnInk: '#7A5510', warnRing: '#F2E2BF',
+  neu: '#8294ad', neuBg: '#EEF2F8', neuInk: '#5A6B85', neuRing: '#DDE4EE',
+  err: '#E0533A', errBg: '#FBECE9', errInk: '#C13A22', errRing: '#F3CFC7',
 
   white: '#ffffff',
   black: '#000000',
@@ -81,7 +81,7 @@ export const shadow = {
     default: {},
   }) as ViewStyle,
   brand: Platform.select({
-    ios: { shadowColor: '#0e6b6b', shadowOpacity: 0.28, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
+    ios: { shadowColor: '#2B5CE6', shadowOpacity: 0.32, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
     android: { elevation: 6 },
     default: {},
   }) as ViewStyle,

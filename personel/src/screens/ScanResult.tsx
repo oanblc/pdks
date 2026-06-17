@@ -63,7 +63,7 @@ export function ScanScreen({ action, onResult, onClose }:
 
       {/* kamera viewport */}
       <View style={{ flex: 1, paddingHorizontal: 18 }}>
-        <View style={{ flex: 1, borderRadius: R.xxl, overflow: 'hidden', backgroundColor: '#15201f' }}>
+        <View style={{ flex: 1, borderRadius: R.xxl, overflow: 'hidden', backgroundColor: '#0F1B2D' }}>
           {granted ? (
             <CameraView
               style={StyleSheet.absoluteFill}
