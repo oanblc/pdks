@@ -11,6 +11,44 @@ import { prisma } from './db.js';
 import { dailyRecords, monthRange, weekKey, shiftExpectedMin, workDayKey, type DayOpts } from './compute.js';
 
 const KVKK_VERSION = 'v2.1';
+const KVKK_DOC_KEY = `kvkk-doc-${KVKK_VERSION}`;
+const KVKK_DOC_DEFAULT = {
+  title: 'Çalışan Kişisel Verilerinin İşlenmesine İlişkin Aydınlatma Metni',
+  body: `Bu aydınlatma metni, 6698 sayılı Kişisel Verilerin Korunması Kanunu ("KVKK") md. 10 kapsamında, veri sorumlusu sıfatıyla işvereniniz tarafından, çalışan kişisel verilerinizin işlenmesine ilişkin sizi bilgilendirmek amacıyla hazırlanmıştır.
+
+1) İŞLENEN KİŞİSEL VERİLER
+- Kimlik: ad-soyad, T.C. kimlik numarası, sicil numarası.
+- İletişim: telefon, adres.
+- Özlük: departman, görev/unvan, şube, vardiya, işe giriş/çıkış tarihi.
+- Çalışma verisi: giriş-çıkış (puantaj) okutmaları, mola kayıtları, izin ve düzeltme talepleri.
+- İşlem güvenliği: cihaz/şube konum (geofence) ve QR okutma kayıtları.
+
+2) İŞLEME AMAÇLARI
+- İş sözleşmesinin kurulması ve ifası, puantaj ve bordro süreçlerinin yürütülmesi.
+- İş sağlığı ve güvenliği ile devam-kontrol (PDKS) yükümlülüklerinin yerine getirilmesi.
+- İş Kanunu, SGK ve ilgili mevzuattan doğan yasal yükümlülüklerin karşılanması.
+
+3) HUKUKİ SEBEP (KVKK md. 5)
+- Sözleşmenin kurulması/ifası için gerekli olması.
+- Veri sorumlusunun hukuki yükümlülüğünü yerine getirmesi.
+- İlgili kişinin temel hak ve özgürlüklerine zarar vermemek kaydıyla meşru menfaat.
+
+4) AKTARIM
+Kişisel verileriniz; yasal yükümlülükler çerçevesinde SGK ve yetkili kamu kurumlarına, hizmet aldığımız bordro/muhasebe ve bilişim tedarikçilerine, yalnızca ilgili amaçla sınırlı olarak aktarılabilir.
+
+5) SAKLAMA SÜRESİ
+Verileriniz, ilgili mevzuatta öngörülen zorunlu saklama süreleri (ör. puantaj/bordro için yasal süreler) boyunca saklanır; süre sonunda silinir, yok edilir veya anonim hâle getirilir.
+
+6) HAKLARINIZ (KVKK md. 11)
+Kişisel verilerinize erişme, düzeltilmesini veya silinmesini isteme, işlenmesine itiraz etme haklarına sahipsiniz. Taleplerinizi uygulama üzerinden veya İK birimine iletebilirsiniz; başvurunuz en geç 30 gün içinde sonuçlandırılır.
+
+Bu metni okuduğunuzu ve kişisel verilerinizin yukarıdaki kapsamda işlenmesine ilişkin bilgilendirildiğinizi onaylarsınız.`,
+};
+async function getKvkkDoc() {
+  const s = await prisma.setting.findUnique({ where: { key: KVKK_DOC_KEY } });
+  if (s) { try { const d = JSON.parse(s.value); return { version: KVKK_VERSION, title: d.title, body: d.body, updatedAt: d.updatedAt ?? null }; } catch { /* bozuk kayıt → varsayılana düş */ } }
+  return { version: KVKK_VERSION, title: KVKK_DOC_DEFAULT.title, body: KVKK_DOC_DEFAULT.body, updatedAt: null };
+}
 const currentMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
 const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 
@@ -1320,7 +1358,19 @@ app.get('/api/kvkk', { preHandler: requireAdmin }, async () => {
   });
   const drs = await prisma.dataRequest.findMany({ include: { employee: true }, orderBy: { createdAt: 'desc' } });
   const requests = drs.map(r => ({ id: r.id, name: r.employee.name, type: r.type, status: r.status, createdAt: r.createdAt }));
-  return { version: KVKK_VERSION, employees, requests };
+  const document = await getKvkkDoc();
+  return { version: KVKK_VERSION, document, employees, requests };
+});
+
+// Aydınlatma metnini güncelle (mevcut sürüm için saklanan metni değiştirir)
+app.patch('/api/kvkk/document', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({ title: z.string().min(2, 'Başlık en az 2 karakter olmalı'), body: z.string().min(10, 'Metin en az 10 karakter olmalı') }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
+  const updatedAt = new Date().toISOString();
+  const value = JSON.stringify({ title: p.data.title.trim(), body: p.data.body, updatedAt });
+  await prisma.setting.upsert({ where: { key: KVKK_DOC_KEY }, create: { key: KVKK_DOC_KEY, value }, update: { value } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'kvkk', action: 'Aydınlatma metni güncellendi', detail: `${KVKK_VERSION} · ${p.data.title.trim()}` } });
+  return { version: KVKK_VERSION, title: p.data.title.trim(), body: p.data.body, updatedAt };
 });
 
 app.post('/api/data-request', { preHandler: requireEmployee }, async (req: any, reply) => {

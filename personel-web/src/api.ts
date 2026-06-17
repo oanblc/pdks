@@ -71,6 +71,7 @@ export const api = {
   adminNotifications: () => req('/api/admin/notifications') as Promise<{ items: NotifItem[]; unreadCount: number; lastSeen: string }>,
   markNotificationsSeen: () => req('/api/admin/notifications/seen', { method: 'POST' }),
   kvkk: () => req('/api/kvkk'),
+  updateKvkkDocument: (body: { title: string; body: string }) => req('/api/kvkk/document', { method: 'PATCH', body: JSON.stringify(body) }),
   createEmployee: (body: { name: string; tc: string; dept?: string; role?: string; branchId?: number; annualLeaveDays?: number; startDate?: string; password: string }) =>
     req('/api/employees', { method: 'POST', body: JSON.stringify(body) }),
   offboardEmployee: (id: number, body: { exitDate: string; reason?: string }) => req(`/api/employees/${id}/offboard`, { method: 'POST', body: JSON.stringify(body) }),

@@ -6,7 +6,8 @@ import { PageHead, StatCard, Table, Row, StatusChip, Avatar, Modal, type Tone } 
 
 type Emp = { name: string; status: 'current' | 'old' | 'none'; version: string | null; acceptedAt: string | null }
 type DSAR = { id: number; name: string; type: string; status: string; createdAt: string }
-type Data = { version: string; employees: Emp[]; requests: DSAR[] }
+type KvkkDoc = { version: string; title: string; body: string; updatedAt: string | null }
+type Data = { version: string; document: KvkkDoc; employees: Emp[]; requests: DSAR[] }
 const consentMap: Record<string, [Tone, string]> = { current: ['ok', 'Güncel rıza'], old: ['warn', 'Eski sürüm'], none: ['err', 'Rıza yok'] }
 const typeMap: Record<string, [string, string]> = { access: ['Erişim', 'Verilerinin bir kopyasını ister'], rectify: ['Düzeltme', 'Hatalı/eksik verinin düzeltilmesini ister'], erase: ['Silme', 'Verilerinin silinmesini ister (unutulma hakkı)'] }
 
@@ -32,6 +33,7 @@ export function Kvkk() {
   const [d, setD] = useState<Data | null>(null)
   const [busy, setBusy] = useState<number | null>(null)
   const [open, setOpen] = useState<DSAR | null>(null)
+  const [docOpen, setDocOpen] = useState(false)
   const load = () => api.kvkk().then(setD as any).catch(() => {})
   useEffect(() => { load() }, [])
   if (!d) return <div className="t-body ink-2">Yükleniyor…</div>
@@ -50,13 +52,26 @@ export function Kvkk() {
         <StatCard label="İlgili kişi talebi" value={d.requests.length} sub="DSAR" icon="doc" />
       </div>
 
+      {/* Aydınlatma metni — çalışanlara onaylattığımız belge */}
+      <div className="rowx between gap12" style={{ marginBottom: 18, padding: '13px 16px', borderRadius: 'var(--r-md)', background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="rowx gap12" style={{ minWidth: 0 }}>
+          <span style={{ width: 38, height: 38, flex: 'none', borderRadius: 9, background: 'var(--brand-50)', color: 'var(--brand-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="doc" size={19} /></span>
+          <div style={{ minWidth: 0 }}>
+            <div className="t-bodys" style={{ fontSize: 14 }}>{d.document.title}</div>
+            <div className="t-cap ink-4 mono">Sürüm {d.document.version}{d.document.updatedAt ? ` · güncellendi ${trDate(d.document.updatedAt)}` : ' · varsayılan metin'}</div>
+          </div>
+        </div>
+        <button className="btn btn-ghost" style={{ flex: 'none' }} onClick={() => setDocOpen(true)}><Icon name="doc" size={16} /> Metni görüntüle</button>
+      </div>
+
       <div className="t-h3" style={{ marginBottom: 12 }}>Rıza durumu</div>
-      <Table cols={[{ label: 'ÇALIŞAN', flex: 2 }, { label: 'SÜRÜM', flex: 1 }, { label: 'DURUM', w: 160, align: 'right' }]}>
+      <Table cols={[{ label: 'Çalışan', flex: 2 }, { label: 'Sürüm', w: 90 }, { label: 'Onay tarihi', flex: 1 }, { label: 'Durum', w: 150, align: 'right' }]}>
         {d.employees.map((e, i) => (
           <Row key={i} i={i} cells={[
-            { flex: 2, node: <div className="rowx gap12"><Avatar name={e.name} size={34} /><span className="t-bodys" style={{ fontSize: 14.5 }}>{e.name}</span></div> },
-            { flex: 1, node: <span className="t-sm mono ink-2">{e.version || '—'}</span> },
-            { w: 160, align: 'right', node: <StatusChip status={consentMap[e.status][0]}>{consentMap[e.status][1]}</StatusChip> },
+            { flex: 2, node: <div className="rowx gap12"><Avatar name={e.name} size={34} /><span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{e.name}</span></div> },
+            { w: 90, node: <span className="t-sm mono ink-2">{e.version || '—'}</span> },
+            { flex: 1, node: <span className="t-sm mono" style={{ color: e.acceptedAt ? 'var(--ink-2)' : 'var(--ink-4)' }}>{e.acceptedAt ? trDateTime(e.acceptedAt) : '—'}</span> },
+            { w: 150, align: 'right', node: <StatusChip status={consentMap[e.status][0]}>{consentMap[e.status][1]}</StatusChip> },
           ]} />
         ))}
       </Table>
@@ -81,7 +96,52 @@ export function Kvkk() {
       )}
 
       {open && <DsarModal req={open} onClose={() => setOpen(null)} onDone={() => { setOpen(null); load() }} />}
+      {docOpen && <KvkkDocModal doc={d.document} onClose={() => setDocOpen(false)} onSaved={() => { setDocOpen(false); load() }} />}
     </div>
+  )
+}
+
+function KvkkDocModal({ doc, onClose, onSaved }: { doc: KvkkDoc; onClose: () => void; onSaved: () => void }) {
+  const [edit, setEdit] = useState(false)
+  const [title, setTitle] = useState(doc.title)
+  const [body, setBody] = useState(doc.body)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const save = async () => {
+    setErr(null)
+    if (title.trim().length < 2) return setErr('Başlık en az 2 karakter olmalı')
+    if (body.trim().length < 10) return setErr('Metin en az 10 karakter olmalı')
+    setSaving(true)
+    try { await api.updateKvkkDocument({ title: title.trim(), body }); onSaved() }
+    catch (e: any) { setErr(e.message); setSaving(false) }
+  }
+
+  return (
+    <Modal title={`Aydınlatma metni · ${doc.version}`} onClose={onClose} width={680}
+      footer={<>
+        <button className="btn btn-ghost" style={{ height: 40 }} onClick={onClose}>Kapat</button>
+        {edit
+          ? <button className="btn btn-primary" style={{ height: 40, opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={save}>{saving ? 'Kaydediliyor…' : 'Metni kaydet'}</button>
+          : <button className="btn btn-primary" style={{ height: 40 }} onClick={() => setEdit(true)}><Icon name="edit" size={16} color="#fff" /> Düzenle</button>}
+      </>}>
+      {err && <div className="t-sm" style={{ color: 'var(--err-ink)', background: 'var(--err-bg)', padding: '10px 12px', borderRadius: 'var(--r-sm)' }}>{err}</div>}
+      <div className="t-cap ink-4 mono">Sürüm {doc.version}{doc.updatedAt ? ` · son güncelleme ${trDateTime(doc.updatedAt)}` : ' · varsayılan metin (henüz düzenlenmedi)'}</div>
+      {edit ? (
+        <>
+          <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Başlık" />
+          <textarea value={body} onChange={e => setBody(e.target.value)} rows={18}
+            style={{ width: '100%', borderRadius: 'var(--r-sm)', border: '1px solid var(--border-strong)', background: 'var(--surface)', padding: '12px 14px', fontSize: 13, fontFamily: 'inherit', color: '#26344a', lineHeight: 1.6, resize: 'vertical', outline: 'none' }} />
+          <div className="t-cap ink-4" style={{ lineHeight: 1.5 }}>Not: Metni düzenlemek hukuki olarak yeni bir <b>sürüm</b> gerektirebilir; mevcut onaylar bu sürüm ({doc.version}) için geçerli kalır. Değişiklik denetim kaydına yazılır.</div>
+        </>
+      ) : (
+        <>
+          <div className="t-bodys" style={{ fontSize: 15 }}>{doc.title}</div>
+          <div style={{ maxHeight: '52vh', overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.65, color: 'var(--ink-2)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '14px 16px' }}>{doc.body}</div>
+          <div className="t-cap ink-4" style={{ lineHeight: 1.5 }}>Çalışanların mobil uygulamada onayladığı metnin aynısıdır. "Rıza durumu" tablosundan kimin hangi sürümü ne zaman onayladığını görebilirsiniz.</div>
+        </>
+      )}
+    </Modal>
   )
 }
 
