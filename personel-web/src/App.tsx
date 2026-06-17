@@ -8,6 +8,7 @@ import { setToken, type AdminInfo } from './api'
 import { Login } from './screens/Login'
 import { Dashboard } from './screens/Dashboard'
 import { Employees } from './screens/Employees'
+import { EmployeeDetail } from './screens/EmployeeDetail'
 import { Branches } from './screens/Branches'
 import { Approvals } from './screens/Approvals'
 import { Audit } from './screens/Audit'
@@ -50,7 +51,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
 ]
 
 const SCREENS: Record<string, () => React.ReactElement> = {
-  dashboard: Dashboard, employees: Employees, branches: Branches, approvals: Approvals, audit: Audit,
+  dashboard: Dashboard, employees: Employees, employeeDetail: EmployeeDetail, branches: Branches, approvals: Approvals, audit: Audit,
   shifts: Shifts, holidays: Holidays, timesheet: Timesheet, anomaly: Anomaly, risk: RiskScore, risksettings: RiskSettings, kvkk: Kvkk, reports: Reports,
 }
 
@@ -108,7 +109,7 @@ export function App() {
                 <div className="t-mono-label ink-3" style={{ padding: '0 10px 8px', fontSize: 10 }}>{g.group.toUpperCase()}</div>
                 <div className="col" style={{ gap: 2 }}>
                   {items.map(it => {
-                    const on = route === it.id
+                    const on = route === it.id || (it.id === 'employees' && route === 'employeeDetail')
                     return (
                       <button key={it.id} onClick={() => setRoute(it.id)} className="btn" style={{ justifyContent: 'flex-start', height: 40, padding: '0 10px', borderRadius: 'var(--r-sm)', gap: 11, background: on ? 'var(--brand-50)' : 'transparent', color: on ? 'var(--brand-700)' : 'var(--ink-2)' }}>
                         <Icon name={it.icon} size={19} strokeWidth={on ? 2 : 1.75} />
