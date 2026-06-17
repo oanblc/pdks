@@ -779,11 +779,11 @@ async function assertFk(reply: any, branchId?: number | null, shiftId?: number |
   return true;
 }
 app.post('/api/employees', { preHandler: requireAdmin }, async (req: any, reply) => {
-  const p = z.object({ name: z.string().min(2), tc: z.string().regex(/^\d{11}$/), dept: z.string().optional(), role: z.string().optional(), branchId: z.number().int().optional(), shiftId: z.number().int().optional(), annualLeaveDays: z.number().int().min(0).max(60).optional(), password: z.string().min(8, 'Şifre en az 8 karakter olmalı') }).safeParse(req.body);
+  const p = z.object({ name: z.string().min(2), tc: z.string().regex(/^\d{11}$/), dept: z.string().optional(), role: z.string().optional(), branchId: z.number().int().optional(), shiftId: z.number().int().optional(), annualLeaveDays: z.number().int().min(0).max(60).optional(), startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'İşe giriş tarihi YYYY-AA-GG olmalı').optional(), password: z.string().min(8, 'Şifre en az 8 karakter olmalı') }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   if (!(await assertFk(reply, p.data.branchId, p.data.shiftId))) return;
   if (await prisma.employee.findUnique({ where: { tc: p.data.tc } })) return bad(reply, 'Bu TC ile kayıt zaten var');
-  const emp = await prisma.employee.create({ data: { name: p.data.name, tc: p.data.tc, dept: p.data.dept, role: p.data.role, branchId: p.data.branchId ?? null, shiftId: p.data.shiftId ?? null, annualLeaveDays: p.data.annualLeaveDays ?? 14, passwordHash: await bcrypt.hash(p.data.password, 10), status: 'active', sicil: await nextSicil() } });
+  const emp = await prisma.employee.create({ data: { name: p.data.name, tc: p.data.tc, dept: p.data.dept, role: p.data.role, branchId: p.data.branchId ?? null, shiftId: p.data.shiftId ?? null, annualLeaveDays: p.data.annualLeaveDays ?? 14, startDate: p.data.startDate ? new Date(p.data.startDate + 'T12:00:00Z') : null, passwordHash: await bcrypt.hash(p.data.password, 10), status: 'active', sicil: await nextSicil() } });
   await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Çalışan eklendi', detail: emp.name } });
   return publicEmployee(emp);
 });
@@ -800,6 +800,7 @@ app.patch('/api/employees/:id', { preHandler: requireAdmin }, async (req: any, r
     shiftId: z.number().int().nullable().optional(),
     isManager: z.boolean().optional(),
     annualLeaveDays: z.number().int().min(0).max(60).optional(),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'İşe giriş tarihi YYYY-AA-GG olmalı').nullable().optional(),
   }).safeParse(req.body);
   if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz veri');
   if (!(await assertFk(reply, p.data.branchId, p.data.shiftId))) return;
@@ -807,6 +808,7 @@ app.patch('/api/employees/:id', { preHandler: requireAdmin }, async (req: any, r
   for (const k of ['name', 'dept', 'role', 'branchId', 'shiftId', 'isManager', 'annualLeaveDays'] as const) {
     if (p.data[k] !== undefined) data[k] = p.data[k];
   }
+  if (p.data.startDate !== undefined) data.startDate = p.data.startDate ? new Date(p.data.startDate + 'T12:00:00Z') : null;
   const updated = await prisma.employee.update({ where: { id }, data, include: { branch: true } });
   await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'cihaz', action: 'Çalışan bilgileri güncellendi', detail: updated.name } });
   return publicEmployee(updated);

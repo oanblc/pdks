@@ -5,7 +5,7 @@ import { api } from '../api'
 import { PageHead, SearchInput, Table, Row, Avatar, StatusChip, Modal, Field, type Tone } from '../ui'
 
 type LeaveBalance = { entitlement: number; used: number; pending: number; remaining: number }
-type Emp = { id: number; name: string; branch: string | null; branchId: number | null; shiftId: number | null; dept: string | null; role: string | null; status: string; sicil: string | null; exitDate: string | null; exitReason: string | null; onLeaveToday?: boolean; isManager?: boolean; annualLeaveDays?: number; leave?: LeaveBalance }
+type Emp = { id: number; name: string; branch: string | null; branchId: number | null; shiftId: number | null; dept: string | null; role: string | null; status: string; sicil: string | null; startDate: string | null; exitDate: string | null; exitReason: string | null; onLeaveToday?: boolean; isManager?: boolean; annualLeaveDays?: number; leave?: LeaveBalance }
 type Branch = { id: number; name: string }
 type Shift = { id: number; name: string; start: string; end: string }
 
@@ -114,6 +114,7 @@ function EmployeeModal({ emp, onClose, onDone, onApprove }: { emp: Emp; onClose:
   const [branchId, setBranchId] = useState(emp.branchId ? String(emp.branchId) : '')
   const [shiftId, setShiftId] = useState(emp.shiftId ? String(emp.shiftId) : '')
   const [isManager, setIsManager] = useState(!!emp.isManager)
+  const [startDate, setStartDate] = useState(emp.startDate ? emp.startDate.slice(0, 10) : '')
   const [leaveDays, setLeaveDays] = useState(String(emp.annualLeaveDays ?? 14))
   const [branchList, setBranchList] = useState<Branch[]>([])
   const [shiftList, setShiftList] = useState<Shift[]>([])
@@ -132,6 +133,7 @@ function EmployeeModal({ emp, onClose, onDone, onApprove }: { emp: Emp; onClose:
   const save = async () => {
     setErr(null)
     if (name.trim().length < 2) return setErr('Ad-Soyad en az 2 karakter olmalıdır')
+    if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return setErr('Geçerli bir işe giriş tarihi seçin')
     setSaving(true)
     try {
       await api.updateEmployee(emp.id, {
@@ -142,6 +144,7 @@ function EmployeeModal({ emp, onClose, onDone, onApprove }: { emp: Emp; onClose:
         shiftId: shiftId ? Number(shiftId) : null,
         isManager,
         annualLeaveDays: Math.max(0, Math.min(60, Number(leaveDays) || 0)),
+        startDate: startDate || null,
       })
       onDone()
     } catch (e: any) { setErr(e.message); setSaving(false) }
@@ -200,6 +203,7 @@ function EmployeeModal({ emp, onClose, onDone, onApprove }: { emp: Emp; onClose:
           {shiftList.map(s => <option key={s.id} value={s.id}>{s.name} ({s.start}–{s.end})</option>)}
         </select>
       </Field>
+      <Field label="İŞE GİRİŞ TARİHİ"><input className="input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
 
       <label className="rowx between" style={{ alignItems: 'center', gap: 12, marginTop: 6, padding: '12px 14px', borderRadius: 'var(--r-sm)', background: 'var(--surface-2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
         <div style={{ minWidth: 0 }}>
@@ -274,6 +278,7 @@ function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   const [dept, setDept] = useState('')
   const [role, setRole] = useState('')
   const [branchId, setBranchId] = useState('')
+  const [startDate, setStartDate] = useState('')
   const [password, setPassword] = useState('')
   const [branchList, setBranchList] = useState<Branch[]>([])
   const [err, setErr] = useState<string | null>(null)
@@ -285,6 +290,7 @@ function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
     setErr(null)
     if (!name.trim()) return setErr('Ad-Soyad zorunludur')
     if (!/^\d{11}$/.test(tc)) return setErr('TC kimlik no 11 haneli olmalıdır')
+    if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return setErr('Geçerli bir işe giriş tarihi seçin')
     if (password.length < 8) return setErr('Şifre en az 8 karakter olmalı')
     setSaving(true)
     try {
@@ -293,6 +299,7 @@ function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
         dept: dept.trim() || undefined,
         role: role.trim() || undefined,
         branchId: branchId ? Number(branchId) : undefined,
+        startDate: startDate || undefined,
       })
       onDone()
     } catch (e: any) { setErr(e.message); setSaving(false) }
@@ -315,6 +322,7 @@ function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
           {branchList.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
       </Field>
+      <Field label="İŞE GİRİŞ TARİHİ"><input className="input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
       <Field label="ŞİFRE"><input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Geçici şifre" /></Field>
     </Modal>
   )
