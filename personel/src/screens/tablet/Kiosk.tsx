@@ -86,18 +86,18 @@ export function KioskScreen({ offline, lastSync, branch, branchId, deviceCode, o
         </View>
       ) : (
         <View style={{ alignItems: 'center', paddingTop: 78, paddingHorizontal: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={[{ width: 40, height: 40, borderRadius: 12, backgroundColor: C.brand600, alignItems: 'center', justifyContent: 'center' }, shadow.brand]}>
-              <Icon name="check" size={22} color={C.white} strokeWidth={2.6} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={[{ width: 44, height: 44, borderRadius: 13, backgroundColor: C.brand600, alignItems: 'center', justifyContent: 'center' }, shadow.brand]}>
+              <Icon name="check" size={24} color={C.white} strokeWidth={2.6} />
             </View>
             <View>
               <T v="h3" style={{ fontSize: 17 }}>{branch}</T>
               <T v="cap" color={C.ink3}>{date}</T>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 2 }}>
+                <T v="counter" tnum style={{ fontSize: 34, lineHeight: 36 }}>{hm}</T>
+                <T v="h3" tnum color={C.ink3} style={{ fontSize: 16 }}>:{ss}</T>
+              </View>
             </View>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}>
-            <T v="counter" tnum style={{ fontSize: 38, lineHeight: 38 }}>{hm}</T>
-            <T v="h3" tnum color={C.ink3} style={{ fontSize: 17 }}>:{ss}</T>
           </View>
         </View>
       )}
