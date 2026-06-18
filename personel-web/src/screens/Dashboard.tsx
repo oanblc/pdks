@@ -30,7 +30,7 @@ export function Dashboard() {
           <button className="btn btn-ghost" onClick={() => { setD(null); api.dashboard().then(setD as any) }}><Icon name="refresh" size={16} /> Yenile</button>
         </>} />
 
-      <div className="rowx gap12" style={{ marginBottom: 14, alignItems: 'stretch' }}>
+      <div className="rowx gap12 stat-row" style={{ marginBottom: 14, alignItems: 'stretch' }}>
         <StatCard label="Aktif şube" value={stats.branches} sub="kayıtlı şube" icon="building" />
         <StatCard label="Bugün okutma" value={stats.todayPunches} sub="şirket geneli" tone="ok" icon="qr" />
         <StatCard label="Aktif çalışan" value={stats.activeEmployees} sub="onaylı" tone="ok" icon="user" />
@@ -49,12 +49,12 @@ export function Dashboard() {
       )}
 
       <div className="card" style={{ overflow: 'hidden' }}>
-        <div className="rowx between" style={{ gap: 12, padding: '15px 16px 13px', borderBottom: '1px solid #EEF2F8' }}>
+        <div className="rowx between branch-head" style={{ gap: 12, padding: '15px 16px 13px', borderBottom: '1px solid #EEF2F8' }}>
           <div className="rowx gap8" style={{ alignItems: 'baseline' }}>
             <span className="t-h3" style={{ fontSize: 15.5 }}>Şubeler</span>
             <span className="t-cap ink-4">{d.branches.length} kayıtlı</span>
           </div>
-          <SearchInput placeholder="Şube ara…" width={240} value={q} onChange={setQ} />
+          <div className="branch-search"><SearchInput placeholder="Şube ara…" width={240} value={q} onChange={setQ} /></div>
         </div>
         {branches.map(b => (
           <div key={b.id} className="rowx gap14 row-click" style={{ padding: '14px 16px', borderTop: '1px solid #F1F4F9', cursor: 'pointer' }} onClick={() => goto('branches', b.id)}>
@@ -66,7 +66,7 @@ export function Dashboard() {
               </div>
               <div className="t-cap ink-4" style={{ marginTop: 2 }}>{b.city}</div>
             </div>
-            <div className="rowx" style={{ marginLeft: 24 }}>
+            <div className="rowx branch-stats" style={{ marginLeft: 24 }}>
               {([['Bugün', b.today], ['Bayraklı', b.flagged], ['Manuel', b.anomaly]] as const).map(([k, v], i) => (
                 <div key={i} className="rowx">
                   {i > 0 && <div style={{ width: 1, height: 30, background: '#EAEFF6' }} />}
@@ -78,7 +78,7 @@ export function Dashboard() {
               ))}
             </div>
             <div className="rowx gap16" style={{ marginLeft: 'auto' }}>
-              <span className="rowx gap6 t-cap ink-4" style={{ whiteSpace: 'nowrap' }}><Icon name="refresh" size={13} strokeWidth={2} />son eşitleme {b.sync}</span>
+              <span className="rowx gap6 t-cap ink-4 branch-sync" style={{ whiteSpace: 'nowrap' }}><Icon name="refresh" size={13} strokeWidth={2} />son eşitleme {b.sync}</span>
               <span className="rowx gap4" style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-600)', whiteSpace: 'nowrap' }}>Yönet <Icon name="chevron" size={14} strokeWidth={2.1} /></span>
             </div>
           </div>

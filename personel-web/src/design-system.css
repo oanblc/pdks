@@ -288,4 +288,9 @@ select.input { appearance: none; -webkit-appearance: none; cursor: pointer; }
   .page-head { flex-wrap: wrap; }
   .page-head > :first-child { flex: 1 1 100%; }
   .page-head > * { min-width: 0; }
+  /* Dashboard: dar ekranda şube satırı sadeleşir, arama tam genişlik olur */
+  .branch-stats, .branch-sync { display: none; }
+  .branch-head { flex-wrap: wrap; }
+  .branch-search { width: 100%; }
+  .branch-search > div { width: 100% !important; }
 }
