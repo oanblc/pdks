@@ -18,7 +18,7 @@ export function Shifts() {
     <div>
       <PageHead title="Vardiyalar" subtitle={`${rows.length} vardiya tanımı · canlı veri`}
         actions={<button className="btn btn-primary" style={{ height: 44 }} onClick={() => setAdd(true)}><Icon name="plus" size={19} color="#fff" /> Vardiya ekle</button>} />
-      <div className="rowx gap14" style={{ marginBottom: 18 }}>
+      <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
         <StatCard label="Vardiya" value={rows.length} sub="tanımlı" icon="clock" />
         <StatCard label="Atanan çalışan" value={rows.reduce((s, r) => s + r.employees, 0)} sub="vardiyalı" tone="ok" icon="user" />
         <StatCard label="Gece vardiyası" value={rows.filter(r => r.overnight).length} sub="gece yarısını geçen" icon="clock" />

@@ -61,7 +61,7 @@ export function Branches() {
               <button className="btn btn-ghost" style={{ height: 44 }} onClick={() => setShowBranch(true)}><Icon name="building" size={18} color="var(--ink)" /> Şube ekle</button>
               <button className="btn btn-primary" style={{ height: 44 }} onClick={() => setPairBranch(0)}><Icon name="plus" size={19} color="#fff" /> Cihaz eşle</button>
             </>} />
-          <div className="rowx gap14" style={{ marginBottom: 18 }}>
+          <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
             <StatCard label="Şube" value={branches.length} sub="tanımlı" icon="building" />
             <StatCard label="Cihaz" value={devices.length} sub="kayıtlı" icon="qr" />
             <StatCard label="Aktif cihaz" value={active} sub="eşli kiosk" tone="ok" icon="check" />

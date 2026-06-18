@@ -256,3 +256,36 @@ select.input { appearance: none; -webkit-appearance: none; cursor: pointer; }
 /* topbar ikon butonu (zil) */
 .tb-icon { position: relative; background: var(--bg); border: 1px solid var(--border-2); width: 36px; height: 36px; border-radius: 9px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--ink-3); transition: background .12s; }
 .tb-icon:hover { background: #e9eef6; }
+
+/* Mobil menü (hamburger) — masaüstünde gizli */
+.nav-toggle { display: none; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 9px; background: var(--bg); border: 1px solid var(--border-2); cursor: pointer; flex: none; margin-right: 4px; }
+.nav-backdrop { display: none; }
+
+/* ── Responsive: dar ekranda kenar çubuğu çekmece olur ── */
+@media (max-width: 860px) {
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; width: 264px;
+    transform: translateX(-100%); transition: transform .24s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 24px 60px rgba(8,15,30,.4);
+  }
+  .sidebar.open { transform: none; }
+  .nav-backdrop.show { display: block; position: fixed; inset: 0; z-index: 50; background: rgba(8,15,30,.45); }
+  .nav-toggle { display: inline-flex; }
+  .topbar { padding-left: 14px !important; padding-right: 14px !important; }
+  .main-scroll { padding: 16px 14px 28px !important; }
+}
+
+/* Çok dar ekranda üst breadcrumb sadeleşir */
+@media (max-width: 520px) {
+  .topbar .crumb-tail { display: none; }
+}
+
+/* Dar ekranda istatistik kartları ve sayfa başlığı eylemleri sarmalanır */
+@media (max-width: 680px) {
+  .stat-row { flex-wrap: wrap; }
+  .stat-row > * { flex: 1 1 calc(50% - 7px); min-width: calc(50% - 7px); }
+  /* başlık tam satır olur, eylem butonları alta sarmalanır */
+  .page-head { flex-wrap: wrap; }
+  .page-head > :first-child { flex: 1 1 100%; }
+  .page-head > * { min-width: 0; }
+}

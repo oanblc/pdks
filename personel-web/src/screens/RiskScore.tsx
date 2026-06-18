@@ -29,7 +29,7 @@ export function RiskScore() {
     <div>
       <PageHead title="Risk Skoru" subtitle={`${d.month} · çalışan bazlı güvenlik risk değerlendirmesi`} />
 
-      <div className="rowx gap14" style={{ marginBottom: 18 }}>
+      <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
         <StatCard label="Yüksek risk" value={high} sub={`≥ ${highMin} skor`} tone="err" icon="alert" />
         <StatCard label="Orta risk" value={mid} sub={`${midMin} – ${highMin - 1} skor`} tone="warn" icon="shield" />
         <StatCard label="Sinyalli çalışan" value={flagged.length} sub="skor > 0" icon="user" />

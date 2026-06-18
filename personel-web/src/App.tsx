@@ -68,6 +68,8 @@ export function App() {
   })
   const [route, setRoute] = useState('dashboard')
   const [toast, setToast] = useState<string | null>(null)
+  const [navOpen, setNavOpen] = useState(false)
+  const go = (r: string) => { setRoute(r); setNavOpen(false) }
 
   // navigasyon köprüsünü ilk render'dan önce ve effect içinde kur
   setNav(setRoute)
@@ -100,8 +102,10 @@ export function App() {
           <span className="t-sm" style={{ fontWeight: 600 }}>{toast}</span>
         </div>
       )}
+      {/* ── Mobil drawer arka planı ── */}
+      <div className={'nav-backdrop' + (navOpen ? ' show' : '')} onClick={() => setNavOpen(false)} />
       {/* ── Sol nav (lacivert) ── */}
-      <div className="sidebar">
+      <div className={'sidebar' + (navOpen ? ' open' : '')}>
         <div className="rowx gap10" style={{ padding: '18px 18px 16px' }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--brand-600)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', boxShadow: '0 4px 12px rgba(43,92,230,.35)' }}><Icon name="check" size={20} color="#fff" strokeWidth={3} /></div>
           <div style={{ lineHeight: 1.1 }}>
@@ -120,7 +124,7 @@ export function App() {
                   {items.map(it => {
                     const on = route === it.id || (it.id === 'employees' && route === 'employeeDetail') || (it.id === 'performance' && route === 'evaluationDetail')
                     return (
-                      <button key={it.id} onClick={() => setRoute(it.id)} className={'sb-item' + (on ? ' active' : '')}>
+                      <button key={it.id} onClick={() => go(it.id)} className={'sb-item' + (on ? ' active' : '')}>
                         <Icon name={it.icon} size={18} strokeWidth={1.8} />
                         <span style={{ flex: 1, textAlign: 'left' }}>{it.label}</span>
                         {it.badge && <span className="sb-badge" style={{ background: on ? 'rgba(255,255,255,.22)' : '#16263d', color: on ? '#fff' : '#9FB0C9' }}>{it.badge}</span>}
@@ -144,12 +148,13 @@ export function App() {
 
       {/* ── Ana içerik ── */}
       <div className="col grow" style={{ minWidth: 0 }}>
-        <div className="rowx between" style={{ height: 58, flex: 'none', padding: '0 26px', background: 'var(--surface)', borderBottom: '1px solid var(--border-2)' }}>
-          <div className="rowx gap8" style={{ fontSize: 13, color: 'var(--ink-3)' }}>
+        <div className="rowx between topbar" style={{ height: 58, flex: 'none', padding: '0 26px', background: 'var(--surface)', borderBottom: '1px solid var(--border-2)' }}>
+          <div className="rowx gap8" style={{ fontSize: 13, color: 'var(--ink-3)', minWidth: 0 }}>
+            <button className="nav-toggle" onClick={() => setNavOpen(true)} aria-label="Menü"><Icon name="dots" size={20} color="var(--ink)" /></button>
             <Icon name="building" size={16} color="#8294ad" strokeWidth={1.8} />
-            <span style={{ fontWeight: 600, color: '#26344a' }}>Tüm şubeler</span>
-            <span style={{ color: '#aab7cc' }}>·</span>
-            <span>şirket geneli</span>
+            <span style={{ fontWeight: 600, color: '#26344a', whiteSpace: 'nowrap' }}>Tüm şubeler</span>
+            <span className="crumb-tail" style={{ color: '#aab7cc' }}>·</span>
+            <span className="crumb-tail" style={{ whiteSpace: 'nowrap' }}>şirket geneli</span>
           </div>
           <div className="rowx gap12">
             <NotificationBell />
@@ -159,7 +164,7 @@ export function App() {
             <Avatar name={admin.name} size={36} style={{ background: 'var(--brand-600)', color: '#fff' }} />
           </div>
         </div>
-        <div style={{ flex: 1, overflow: 'auto', background: 'var(--bg)', padding: '22px 26px 32px' }}>
+        <div className="main-scroll" style={{ flex: 1, overflow: 'auto', background: 'var(--bg)', padding: '22px 26px 32px' }}>
           {Screen ? <Screen /> : <Stub id={route} />}
         </div>
       </div>

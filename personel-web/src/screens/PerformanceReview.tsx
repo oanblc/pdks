@@ -50,7 +50,7 @@ export function PerformanceReview() {
         {[thisYear, thisYear - 1, thisYear - 2].map(y => <Pill key={y} active={y === year} onClick={() => setYear(y)}>{y}</Pill>)}
       </div>
 
-      <div className="rowx gap14" style={{ marginBottom: 18 }}>
+      <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
         <StatCard label="Ortalama skor" value={`${toStars(avg)}`} sub={`5 üzerinden · ${scoreBand(avg).label}`} tone={scoreBand(avg).tone} icon="star" />
         <StatCard label="Değerlendirilen" value={`${evaluated} / ${total}`} sub="çalışan" icon="user" />
         <StatCard label="Yayınlanan" value={published} sub="tamamlandı" tone="ok" icon="check" />

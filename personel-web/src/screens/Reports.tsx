@@ -89,7 +89,7 @@ export function Reports() {
           <button className="btn btn-ghost" style={{ height: 44 }} onClick={exportPdf}><Icon name="doc" size={18} color="var(--ink)" /> PDF</button>
         </>} />
 
-      <div className="rowx gap14" style={{ marginBottom: 18 }}>
+      <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
         <StatCard label="Toplam net" value={`${totals.netHours.toFixed(0)} s`} sub="çalışılan" icon="clock" />
         <StatCard label="Fazla mesai" value={`${totals.overtimeHours.toFixed(0)} s`} sub="toplam" tone="brand" icon="calendar" />
         <StatCard label="Geç giriş" value={totals.late} sub="gün" tone="warn" icon="alert" />

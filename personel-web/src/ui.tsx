@@ -23,7 +23,7 @@ export function Avatar({ name = '', size = 44, src, ring = false, style }:
 
 export function PageHead({ title, subtitle, actions }: { title: string; subtitle?: React.ReactNode; actions?: React.ReactNode }) {
   return (
-    <div className="rowx between" style={{ marginBottom: 18, gap: 16, alignItems: 'flex-start' }}>
+    <div className="rowx between page-head" style={{ marginBottom: 18, gap: 16, alignItems: 'flex-start' }}>
       <div>
         <div className="t-h1">{title}</div>
         {subtitle && <div className="t-sm ink-3" style={{ marginTop: 5 }}>{subtitle}</div>}

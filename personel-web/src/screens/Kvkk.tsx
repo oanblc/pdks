@@ -46,7 +46,7 @@ export function Kvkk() {
   return (
     <div>
       <PageHead title="KVKK" subtitle={`Aydınlatma sürümü ${d.version} · rıza ve ilgili kişi talepleri`} />
-      <div className="rowx gap14" style={{ marginBottom: 18 }}>
+      <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
         <StatCard label="Güncel rıza" value={current} sub={`${d.version} kabul`} tone="ok" icon="shield" />
         <StatCard label="Rıza eksik" value={pending} sub="eski/yok" tone="warn" icon="alert" />
         <StatCard label="İlgili kişi talebi" value={d.requests.length} sub="DSAR" icon="doc" />

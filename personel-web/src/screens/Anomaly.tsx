@@ -16,7 +16,7 @@ export function Anomaly() {
   return (
     <div>
       <PageHead title="Güvenlik" subtitle={`${rows.length} sinyal · risk skorlu inceleme kuyruğu`} />
-      <div className="rowx gap14" style={{ marginBottom: 18 }}>
+      <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
         <StatCard label="Toplam sinyal" value={rows.length} sub="bu dönem" icon="shield" />
         <StatCard label="Yüksek risk" value={high} sub={`≥ ${threshold} skor`} tone="err" icon="alert" />
         <StatCard label="Öncelikli" value={rows.slice(0, 5).length} sub="ilk inceleme" tone="warn" icon="clock" />

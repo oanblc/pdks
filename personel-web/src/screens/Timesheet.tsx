@@ -95,7 +95,7 @@ export function Timesheet() {
           <button className="btn btn-ghost" style={{ height: 44 }} onClick={onPdf}><Icon name="doc" size={18} color="var(--ink)" /> PDF</button>
         </>} />
 
-      <div className="rowx gap14" style={{ marginBottom: 18 }}>
+      <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
         <StatCard label="Çalışan" value={d?.employees.length ?? 0} sub="bu dönem" icon="user" />
         <StatCard label="Bayraklı kayıt" value={d?.flagged.length ?? 0} sub="inceleme gerekir" tone="warn" icon="alert" />
         <StatCard label="Gecikmiş çözüm" value={overdue} sub="3 günü aştı" tone="err" icon="clock" />
@@ -194,7 +194,7 @@ function BranchSheet({ branch, month, employees, flagged, workingDays, onBack }:
         </div>
       </div>
 
-      <div className="rowx gap14" style={{ marginBottom: 18 }}>
+      <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
         {[['Çalışan', String(emps.length)], ['Toplam gün', String(sum.present)], ['Net', hhmm(sum.netMin)], ['Fazla mesai', '+' + hhmm(sum.overtimeMin)], ['Eksik', String(sum.missing)]].map(([k, v], i) => (
           <div key={i} className="card" style={{ flex: 1, padding: '16px 18px' }}>
             <div className="t-cap ink-3">{k}</div>
@@ -389,7 +389,7 @@ function EmployeeSheet({ emp, initialMonth, onBack }: { emp: EmpRow; initialMont
 
       {!s ? <div className="t-body ink-2">Yükleniyor…</div> : (
         <>
-          <div className="rowx gap14" style={{ marginBottom: 18 }}>
+          <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
             {[['Gün', String(s.summary.present)], ['Net', hhmm(s.summary.netMin)], ['Fazla mesai', '+' + hhmm(s.summary.overtimeMin)], ['Eksik', String(s.summary.missing)]].map(([k, v], i) => (
               <div key={i} className="card" style={{ flex: 1, padding: '16px 18px' }}>
                 <div className="t-cap ink-3">{k}</div>

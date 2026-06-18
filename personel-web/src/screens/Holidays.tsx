@@ -47,7 +47,7 @@ export function Holidays() {
           <button className="btn btn-ghost" style={{ height: 44 }} disabled={busy} onClick={doImport}><Icon name="calendar" size={18} color="var(--ink)" /> {year} içe aktar</button>
           <button className="btn btn-primary" style={{ height: 44 }} onClick={() => setAddDate('')}><Icon name="plus" size={19} color="#fff" /> Tatil ekle</button>
         </>} />
-      <div className="rowx gap14" style={{ marginBottom: 18 }}>
+      <div className="rowx gap14 stat-row" style={{ marginBottom: 18 }}>
         <StatCard label="Tatil" value={yearRows.length} sub={`${year} yılı`} icon="calendar" />
         <StatCard label="Kapalı gün" value={closed} sub="tüm şubeler kapalı" tone="ok" icon="calendar" />
         <StatCard label="Açık (çalışılan)" value={yearRows.length - closed} sub="en az bir şube çalışıyor" tone="warn" icon="clock" />
