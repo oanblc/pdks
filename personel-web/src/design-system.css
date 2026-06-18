@@ -289,6 +289,7 @@ select.input { appearance: none; -webkit-appearance: none; cursor: pointer; }
   .page-head { flex-wrap: wrap; }
   .page-head > :first-child { flex: 1 1 100%; }
   .page-head > * { min-width: 0; }
+  .page-head > :last-child { flex-wrap: wrap; }   /* eylem grubu kendi içinde de sarmalanır (ay gezinme + Excel/PDF) */
   /* Dashboard: dar ekranda şube satırı sadeleşir, arama tam genişlik olur */
   .branch-stats, .branch-sync { display: none; }
   .branch-head { flex-wrap: wrap; }
