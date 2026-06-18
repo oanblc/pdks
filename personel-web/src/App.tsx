@@ -150,7 +150,7 @@ export function App() {
       <div className="col grow" style={{ minWidth: 0 }}>
         <div className="rowx between topbar" style={{ height: 58, flex: 'none', padding: '0 26px', background: 'var(--surface)', borderBottom: '1px solid var(--border-2)' }}>
           <div className="rowx gap8" style={{ fontSize: 13, color: 'var(--ink-3)', minWidth: 0 }}>
-            <button className="nav-toggle" onClick={() => setNavOpen(true)} aria-label="Menü"><Icon name="dots" size={20} color="var(--ink)" /></button>
+            <button className="nav-toggle" onClick={() => setNavOpen(true)} aria-label="Menü"><Icon name="menu" size={21} color="var(--ink)" strokeWidth={2} /></button>
             <Icon name="building" size={16} color="#8294ad" strokeWidth={1.8} />
             <span style={{ fontWeight: 600, color: '#26344a', whiteSpace: 'nowrap' }}>Tüm şubeler</span>
             <span className="crumb-tail" style={{ color: '#aab7cc' }}>·</span>
