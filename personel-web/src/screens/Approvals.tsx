@@ -53,7 +53,7 @@ export function Approvals() {
       <PageHead title="Talep Onayları" subtitle={`${reqs.length} talep · ${pending} bekliyor`} />
 
       {!loading && reqs.length > 0 && (
-        <div className="rowx gap12" style={{ marginBottom: 13 }}>
+        <div className="rowx gap12 filter-bar" style={{ marginBottom: 13 }}>
           <SearchInput placeholder="İsim, tür veya detay ara…" width="100%" value={q} onChange={setQ} />
           <select className="input" value={kind} onChange={e => setKind(e.target.value)} style={{ width: 150, flex: 'none' }}>
             <option value="all">Tüm türler</option>

@@ -184,22 +184,33 @@ export function RiskBadge({ score }: { score: number }) {
 type Col = { label: string; flex?: number; w?: number; align?: 'left' | 'right' | 'center' }
 type Cell = { node: React.ReactNode; flex?: number; w?: number; align?: 'left' | 'right' | 'center' }
 
+// Satırların sütun etiketlerini okuyabilmesi için (mobil kart görünümü). Masaüstünde etiketler gizli.
+const TableCtx = React.createContext<Col[]>([])
+
 export function Table({ cols, children }: { cols: Col[]; children: React.ReactNode }) {
   return (
-    <div className="card" style={{ overflow: 'hidden' }}>
-      <div className="rowx gap14" style={{ padding: '11px 18px', background: 'var(--surface-3)', borderBottom: '1px solid #EEF2F8' }}>
-        {cols.map((c, i) => <span key={i} className="t-mono-label" style={{ flex: c.flex || (c.w ? 'none' : 1), width: c.w, textAlign: c.align || 'left' }}>{c.label}</span>)}
+    <TableCtx.Provider value={cols}>
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="rowx gap14 resp-thead" style={{ padding: '11px 18px', background: 'var(--surface-3)', borderBottom: '1px solid #EEF2F8' }}>
+          {cols.map((c, i) => <span key={i} className="t-mono-label" style={{ flex: c.flex || (c.w ? 'none' : 1), width: c.w, textAlign: c.align || 'left' }}>{c.label}</span>)}
+        </div>
+        {children}
       </div>
-      {children}
-    </div>
+    </TableCtx.Provider>
   )
 }
 
 export function Row({ cells, i, bg, onClick }: { cells: Cell[]; i: number; bg?: string; onClick?: () => void }) {
+  const cols = React.useContext(TableCtx)
   return (
-    <div className={'rowx gap14' + (onClick ? ' row-click' : '')} onClick={onClick}
+    <div className={'rowx gap14 resp-row' + (onClick ? ' row-click' : '')} onClick={onClick}
       style={{ padding: '13px 18px', borderTop: i ? '1px solid #F1F4F9' : 'none', background: bg || 'transparent', cursor: onClick ? 'pointer' : undefined }}>
-      {cells.map((c, j) => <div key={j} style={{ flex: c.flex || (c.w ? 'none' : 1), width: c.w, textAlign: c.align || 'left', minWidth: 0 }}>{c.node}</div>)}
+      {cells.map((c, j) => (
+        <div key={j} className="td" style={{ flex: c.flex || (c.w ? 'none' : 1), width: c.w, textAlign: c.align || 'left', minWidth: 0 }}>
+          {cols[j]?.label ? <span className="td-label">{cols[j].label}</span> : null}
+          {c.node}
+        </div>
+      ))}
     </div>
   )
 }

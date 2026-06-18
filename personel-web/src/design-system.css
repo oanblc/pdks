@@ -229,6 +229,7 @@ select.input { appearance: none; -webkit-appearance: none; cursor: pointer; }
 .gap4{gap:4px}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}.gap14{gap:14px}.gap16{gap:16px}.gap20{gap:20px}.gap24{gap:24px}
 .grow { flex: 1; }
 .full { width: 100%; }
+.td-label { display: none; } /* masaüstünde gizli; tablo kart görünümünde (≤680px) açılır */
 .tcenter { text-align: center; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -293,4 +294,33 @@ select.input { appearance: none; -webkit-appearance: none; cursor: pointer; }
   .branch-head { flex-wrap: wrap; }
   .branch-search { width: 100%; }
   .branch-search > div { width: 100% !important; }
+
+  /* Tablolar dar ekranda kart görünümüne döner */
+  .resp-thead { display: none; }
+  .resp-row { flex-direction: column; align-items: stretch; gap: 6px !important; padding: 13px 16px !important; }
+  .resp-row > .td {
+    flex: 1 1 auto !important; width: auto !important; min-width: 0; text-align: left !important;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .resp-row > .td .td-label {
+    display: block; flex: none; font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; line-height: 1.2; font-weight: 500; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--ink-4);
+  }
+  .resp-row > .td:first-child { justify-content: flex-start; }     /* 1. hücre = kart başlığı */
+  .resp-row > .td:first-child .td-label { display: none; }
+
+  /* Filtre çubukları: arama + select'ler alt alta, tam genişlik */
+  .filter-bar { flex-wrap: wrap; }
+  .filter-bar > * { flex: 1 1 100% !important; width: 100% !important; min-width: 0; }
+  .filter-bar select, .filter-bar .input { width: 100% !important; }
+
+  /* İki sütunlu form alanları alt alta */
+  .field-row { flex-wrap: wrap; }
+  .field-row > * { flex: 1 1 100%; min-width: 0; }
+
+  /* Değerlendirme detay başlığı: skor kartı alta, tam genişlik */
+  .eval-head { flex-wrap: wrap; }
+  .eval-head > * { min-width: 0; }
+  .eval-head > :last-child { flex: 1 1 100%; min-width: 0 !important; }
 }

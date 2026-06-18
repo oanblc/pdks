@@ -97,7 +97,7 @@ export function Reports() {
       </div>
 
       {/* Filtreler */}
-      <div className="rowx between" style={{ marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+      <div className="rowx between filter-bar" style={{ marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
         <SearchInput placeholder="Çalışan ara…" width={260} value={q} onChange={setQ} />
         <div className="rowx gap8" style={{ flexWrap: 'wrap' }}>
           <select className="input" value={branch} onChange={e => setBranch(e.target.value)} style={{ width: 170, height: 44 }}>

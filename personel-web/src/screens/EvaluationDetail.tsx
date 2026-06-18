@@ -66,7 +66,7 @@ export function EvaluationDetail() {
     <div style={{ maxWidth: PAGE_MAX }}>
       <button className="btn btn-ghost" onClick={back} style={{ height: 38, padding: '0 12px', marginBottom: 14 }}><Icon name="chevronL" size={17} color="var(--ink)" /> Performans</button>
 
-      <div className="rowx between" style={{ marginBottom: 20, gap: 16, alignItems: 'flex-start' }}>
+      <div className="rowx between eval-head" style={{ marginBottom: 20, gap: 16, alignItems: 'flex-start' }}>
         <div className="rowx gap14" style={{ alignItems: 'center', minWidth: 0 }}>
           <Avatar name={d.employee.name} src={d.employee.avatar || undefined} size={52} />
           <div style={{ minWidth: 0 }}>

@@ -22,7 +22,7 @@ export function Login({ onLogin }: { onLogin: (admin: AdminInfo) => void }) {
 
   return (
     <div className="col center" style={{ height: '100vh', background: 'radial-gradient(120% 80% at 50% -10%, #eef5f5, var(--bg) 55%)', padding: 24 }}>
-      <div className="card" style={{ width: 420, padding: 38, boxShadow: 'var(--sh-lg)' }}>
+      <div className="card" style={{ width: 'min(420px, 100%)', padding: 38, boxShadow: 'var(--sh-lg)' }}>
         <div className="rowx gap12">
           <div style={{ width: 46, height: 46, borderRadius: 13, background: 'var(--brand-600)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--sh-brand)' }}><Icon name="check" size={25} color="#fff" strokeWidth={2.6} /></div>
           <div><div className="t-h2" style={{ fontSize: 22, letterSpacing: '-0.03em' }}>puanto</div><div className="t-mono-label ink-3" style={{ fontSize: 9.5 }}>YÖNETİCİ PANELİ</div></div>

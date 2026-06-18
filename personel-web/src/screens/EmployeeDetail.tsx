@@ -127,11 +127,11 @@ export function EmployeeDetail() {
       <div className="card col" style={{ padding: 24, gap: 16 }}>
         <div className="t-h3" style={{ fontSize: 15 }}>Temel bilgiler</div>
         <Field label="AD-SOYAD"><input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Ad Soyad" /></Field>
-        <div className="rowx gap12">
+        <div className="rowx gap12 field-row">
           <Field label="DEPARTMAN"><input className="input" value={dept} onChange={e => setDept(e.target.value)} placeholder="Departman" /></Field>
           <Field label="ROL"><input className="input" value={role} onChange={e => setRole(e.target.value)} placeholder="Rol / unvan" /></Field>
         </div>
-        <div className="rowx gap12">
+        <div className="rowx gap12 field-row">
           <Field label="ŞUBE">
             <select className="input" value={branchId} onChange={e => setBranchId(e.target.value)}>
               <option value="">— Şube yok —</option>
@@ -145,7 +145,7 @@ export function EmployeeDetail() {
             </select>
           </Field>
         </div>
-        <div className="rowx gap12">
+        <div className="rowx gap12 field-row">
           <Field label="İŞE GİRİŞ TARİHİ"><input className="input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
           <div style={{ flex: 1 }} />
         </div>
@@ -161,7 +161,7 @@ export function EmployeeDetail() {
           </div>
           <input type="checkbox" checked={isManager} onChange={e => setIsManager(e.target.checked)} style={{ width: 20, height: 20, accentColor: 'var(--brand-600)', flex: 'none' }} />
         </label>
-        <div className="rowx gap12" style={{ alignItems: 'flex-end' }}>
+        <div className="rowx gap12 field-row" style={{ alignItems: 'flex-end' }}>
           <Field label="YILLIK İZİN HAKKI (GÜN)"><input className="input mono" value={leaveDays} onChange={e => setLeaveDays(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="14" style={{ width: 140 }} /></Field>
           {emp.leave && (
             <div className="rowx gap8" style={{ flex: 1, flexWrap: 'wrap', paddingBottom: 4 }}>
@@ -196,7 +196,7 @@ export function EmployeeDetail() {
                 Onaylayınca: mobil <b>giriş ve QR okutma yetkisi kapanır</b>, bekleyen izin/düzeltme talepleri kapatılır.
                 Geçmiş puantaj ve bordro kayıtları <b>yasal saklama gereği silinmez</b>; çalışan listede "Çıkış sürecinde" görünür.
               </div>
-              <div className="rowx gap12">
+              <div className="rowx gap12 field-row">
                 <Field label="ÇIKIŞ TARİHİ"><input className="input" type="date" value={exitDate} onChange={e => setExitDate(e.target.value)} /></Field>
                 <Field label="GEREKÇE (opsiyonel)"><input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder="İstifa, dönem sonu, vb." /></Field>
               </div>

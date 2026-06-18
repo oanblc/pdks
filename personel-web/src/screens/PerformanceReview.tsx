@@ -160,7 +160,7 @@ function CampaignModal({ year, branches, criteria, onClose, onDone }:
       </>}>
       {err && <div className="t-sm" style={{ color: 'var(--err-ink)', background: 'var(--err-bg)', padding: '10px 12px', borderRadius: 'var(--r-sm)' }}>{err}</div>}
       <Field label="DÖNEM ADI"><input className="input" value={name} onChange={e => setName(e.target.value)} placeholder={`${year} 1. dönem değerlendirmesi`} /></Field>
-      <div className="rowx gap12">
+      <div className="rowx gap12 field-row">
         <Field label="BAŞLANGIÇ"><input className="input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
         <Field label="BİTİŞ"><input className="input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></Field>
       </div>

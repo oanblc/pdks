@@ -61,7 +61,7 @@ export function Employees() {
           <button className="btn btn-primary" onClick={() => setInvite(true)}><Icon name="plus" size={16} strokeWidth={2} /> Çalışan davet et</button>
         </>} />
 
-      <div className="rowx gap12" style={{ marginBottom: 13 }}>
+      <div className="rowx gap12 filter-bar" style={{ marginBottom: 13 }}>
         <SearchInput placeholder="İsim, sicil no veya departman ara…" width="100%" value={q} onChange={setQ} />
         <select className="input" value={branch} onChange={e => setBranch(e.target.value)} style={{ width: 200, flex: 'none' }}>
           {branches.map(b => <option key={b} value={b}>{b === 'Tümü' ? 'Tüm şubeler' : b}</option>)}
