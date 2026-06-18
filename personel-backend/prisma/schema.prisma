@@ -218,6 +218,33 @@ model Setting {
   value String // JSON
 }
 
+// İK'nın çalışanlara gönderdiği duyuru (uygulama-içi liste + banner + push tetikleyici)
+model Announcement {
+  id         Int      @id @default(autoincrement())
+  title      String
+  body       String
+  audience   String   @default("all") // all | branch
+  branchId   Int? // audience=branch ise hedef şube
+  recipients Int      @default(0) // gönderim anındaki hedef çalışan sayısı (geçmiş için)
+  active     Boolean  @default(true)
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Çalışan cihazının Expo push token'ı (gerçek bildirim için)
+model PushToken {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  token      String   @unique // ExponentPushToken[...]
+  platform   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([employeeId])
+}
+
 model Holiday {
   id               Int      @id @default(autoincrement())
   date             String   @unique // "YYYY-MM-DD"

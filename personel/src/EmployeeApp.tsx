@@ -11,7 +11,9 @@ import { ScanScreen, ResultScreen, ResultKind } from './screens/ScanResult';
 import { OnboardingFlow } from './screens/Onboarding';
 import { ProfileScreen, NotificationsScreen, PushBanner } from './screens/Profile';
 import { TabBar } from './components/ui';
+import * as SecureStore from 'expo-secure-store';
 import { initNotifications } from './lib/notify';
+import { registerPushToken } from './lib/push';
 import { syncReminders, clearAllReminders, dismissReminder, type ReminderKey } from './lib/reminders';
 import { startBranchGeofence, stopBranchGeofence } from './lib/geofence';
 import { enqueuePunch, flushQueue, newClientId } from './lib/punchQueue';
@@ -66,7 +68,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
   const [showProfile, setShowProfile] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [onb, setOnb] = useState<{ start: number } | null>(null);
-  const [push, setPush] = useState<{ key: ReminderKey; title: string; body: string; tone: string; icon: any } | null>(null);
+  const [push, setPush] = useState<{ key: ReminderKey | 'announcement'; title: string; body: string; tone: string; icon: any } | null>(null);
   // me() ile gelen taze hatırlatma bağlamı (vardiya mutlak zamanları dahil — login prop'u bayatlamaz)
   type MeExtra = { lateToleranceMin: number; branchGeo: Geo | null; shiftStartAt: string | null; shiftEndAt: string | null; breakMin: number | null };
   const [meExtra, setMeExtra] = useState<MeExtra>({ lateToleranceMin: 15, branchGeo: null, shiftStartAt: null, shiftEndAt: null, breakMin: employee?.breakMin ?? null });
@@ -101,11 +103,19 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
       setAvatar(r.employee.avatar ?? null);
       await startBranchGeofence(r.branchGeo);
       await runSync(st, bs, extra);
+      // Yeni duyuru varsa banner göster (id başına bir kez)
+      if (r.announcement) {
+        const seen = await SecureStore.getItemAsync('last-ann-id').catch(() => null);
+        if (String(r.announcement.id) !== seen) {
+          setPush({ key: 'announcement', title: r.announcement.title, body: r.announcement.body, tone: 'brand', icon: 'bell' });
+          await SecureStore.setItemAsync('last-ann-id', String(r.announcement.id)).catch(() => {});
+        }
+      }
     } catch { /* sessiz */ }
   };
 
   // Canlı: açılışta bildirim altyapısı + ilk senkron
-  useEffect(() => { if (!live) return; initNotifications(); refresh(); }, [live]);
+  useEffect(() => { if (!live) return; initNotifications(); registerPushToken(); refresh(); }, [live]);
 
   // Uygulama ön plana dönünce durumu/hatırlatmaları tazele
   useEffect(() => {
@@ -183,7 +193,7 @@ export function EmployeeApp({ onSignOut, initialStatus = 'outside', employee, li
         <ProfileScreen employee={display} onUpdated={refresh} onClose={() => setShowProfile(false)} onLogout={() => { setShowProfile(false); clearAllReminders(); stopBranchGeofence(); if (onSignOut) onSignOut(); else setOnb({ start: 0 }); }} />
       )}
       {showNotif && <NotificationsScreen onClose={() => setShowNotif(false)} />}
-      {push && <PushBanner title={push.title} body={push.body} tone={push.tone} icon={push.icon} onPress={() => { setPush(null); setShowNotif(true); }} onDismiss={() => { dismissReminder(push.key); setPush(null); }} />}
+      {push && <PushBanner title={push.title} body={push.body} tone={push.tone} icon={push.icon} onPress={() => { setPush(null); setShowNotif(true); }} onDismiss={() => { if (push.key !== 'announcement') dismissReminder(push.key); setPush(null); }} />}
       {onb && (
         <OnboardingFlow
           key={onb.start}

@@ -102,6 +102,11 @@ export const api = {
   importHolidays: (year: number) => req('/api/holidays/import', { method: 'POST', body: JSON.stringify({ year }) }),
   dsarDone: (id: number) => req(`/api/data-requests/${id}/done`, { method: 'POST' }),
   dsarDetail: (id: number) => req(`/api/data-requests/${id}`),
+  // Duyurular (çalışanlara bildirim)
+  announcements: () => req('/api/announcements') as Promise<Announcement[]>,
+  createAnnouncement: (body: { title: string; body: string; branchId?: number | null }) =>
+    req('/api/announcements', { method: 'POST', body: JSON.stringify(body) }) as Promise<{ ok: boolean; id: number; recipients: number; pushed: number }>,
+  deleteAnnouncement: (id: number) => req(`/api/announcements/${id}`, { method: 'DELETE' }) as Promise<{ ok: boolean }>,
   // Performans değerlendirmesi (yıllık)
   evalCriteria: () => req('/api/eval-criteria') as Promise<{ criteria: EvalCrit[]; defaults: EvalCrit[] }>,
   updateEvalCriteria: (criteria: EvalCrit[]) => req('/api/eval-criteria', { method: 'PUT', body: JSON.stringify({ criteria }) }) as Promise<{ ok: boolean; criteria: EvalCrit[] }>,
@@ -125,6 +130,7 @@ export type EvalCampaign = {
   targetCount: number; submitted: number
 }
 
+export type Announcement = { id: number; title: string; body: string; audience: 'all' | 'branch'; branchId: number | null; branch: string | null; recipients: number; active: boolean; createdAt: string }
 export type EvalCrit = { id: string; label: string; hint?: string; category?: string; weight: number; kind: 'manual' | 'auto' }
 export type EvalRow = { empId: number; name: string; branch: string | null; dept: string | null; avatar: string | null; autoScore: number; overall: number | null; status: 'none' | 'draft' | 'published' }
 export type EvalDetail = {

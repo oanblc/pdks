@@ -222,6 +222,13 @@ app.get('/api/branches', async (req: any) => {
     : { id: b.id, name: b.name, city: b.city, shift: b.shift, workingDays: parseWorkingDays((b as any).workingDays) });
 });
 
+// Bu çalışanı hedefleyen aktif duyurular (son 30 gün, en yeni önce)
+async function announcementsForEmployee(emp: any) {
+  const since = new Date(Date.now() - 30 * 86400000);
+  const anns = await prisma.announcement.findMany({ where: { active: true, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 10 });
+  return anns.filter(a => a.audience === 'all' || (a.audience === 'branch' && a.branchId === emp?.branchId));
+}
+
 app.get('/api/me', { preHandler: requireEmployee }, async (req: any) => {
   const emp = await prisma.employee.findUnique({ where: { id: req.user.sub }, include: { branch: true, shift: true } });
   const punches = await prisma.punch.findMany({ where: { employeeId: req.user.sub, serverTime: { gte: startOfToday() } }, orderBy: { serverTime: 'asc' } });
@@ -236,7 +243,9 @@ app.get('/api/me', { preHandler: requireEmployee }, async (req: any) => {
   const { startAt: shiftStartAt, endAt: shiftEndAt } = shiftInstants((emp as any)?.shift);
   const balances = await annualLeaveBalances(new Date().getFullYear());
   const leave = leaveBalanceOf(balances, req.user.sub, (emp as any)?.annualLeaveDays ?? 14);
-  return { employee: publicEmployee(emp), today: statusFromPunches(punches), lateToleranceMin: cfg.lateToleranceMin, branchGeo, kioskCode, shiftStartAt, shiftEndAt, leave };
+  const ann = (await announcementsForEmployee(emp))[0];
+  const announcement = ann ? { id: ann.id, title: ann.title, body: ann.body, createdAt: ann.createdAt } : null;
+  return { employee: publicEmployee(emp), today: statusFromPunches(punches), lateToleranceMin: cfg.lateToleranceMin, branchGeo, kioskCode, shiftStartAt, shiftEndAt, leave, announcement };
 });
 
 app.post('/api/punch', { preHandler: requireEmployee, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req: any, reply) => {
@@ -925,6 +934,18 @@ app.post('/api/employee/avatar', { preHandler: requireEmployee, config: { rateLi
   if (!p.success) return bad(reply, 'Fotoğraf çok büyük veya geçersiz (en fazla ~500KB)');
   if (p.data.avatar && !/^data:image\/(png|jpe?g|webp);base64,/.test(p.data.avatar)) return bad(reply, 'Geçersiz görsel formatı');
   await prisma.employee.update({ where: { id: req.user.sub }, data: { avatar: p.data.avatar } });
+  return { ok: true };
+});
+
+// Cihaz Expo push token'ı kaydı (gerçek bildirim için)
+app.post('/api/employee/push-token', { preHandler: requireEmployee }, async (req: any, reply) => {
+  const p = z.object({ token: z.string().regex(/^ExponentPushToken\[.+\]$/), platform: z.string().max(16).optional() }).safeParse(req.body);
+  if (!p.success) return bad(reply, 'Geçersiz token');
+  await prisma.pushToken.upsert({
+    where: { token: p.data.token },
+    create: { employeeId: req.user.sub, token: p.data.token, platform: p.data.platform ?? null },
+    update: { employeeId: req.user.sub, platform: p.data.platform ?? null },
+  });
   return { ok: true };
 });
 
@@ -1714,6 +1735,8 @@ app.post('/api/data-request', { preHandler: requireEmployee }, async (req: any, 
 /* ───────── BİLDİRİMLER (çalışan, gerçek veriden türetilir) ───────── */
 app.get('/api/notifications', { preHandler: requireEmployee }, async (req: any) => {
   const out: any[] = [];
+  const meEmp = await prisma.employee.findUnique({ where: { id: req.user.sub } });
+  for (const a of await announcementsForEmployee(meEmp)) out.push({ id: `ann-${a.id}`, icon: 'bell', tone: 'brand', title: a.title, body: a.body, time: a.createdAt });
   const reqs = await prisma.request.findMany({ where: { employeeId: req.user.sub, status: { in: ['approved', 'rejected'] } }, orderBy: { createdAt: 'desc' }, take: 5 });
   for (const r of reqs) out.push({
     icon: r.status === 'approved' ? 'check' : 'x', tone: r.status === 'approved' ? 'ok' : 'err',
@@ -1782,6 +1805,72 @@ app.post('/api/admin/notifications/seen', { preHandler: requireAdmin }, async (r
   const at = new Date().toISOString();
   await prisma.setting.upsert({ where: { key: notifSeenKey(req.user.sub) }, create: { key: notifSeenKey(req.user.sub), value: JSON.stringify({ at }) }, update: { value: JSON.stringify({ at }) } });
   return { ok: true, at };
+});
+
+/* ───────── DUYURULAR (çalışanlara bildirim — uygulama-içi + Expo push) ───────── */
+// Expo push gönderimi (best-effort): 100'erli parça, exp.host'a POST, geçersiz token'ı sil.
+async function sendExpoPush(tokens: string[], msg: { title: string; body: string; data?: any }): Promise<number> {
+  let pushed = 0;
+  for (let i = 0; i < tokens.length; i += 100) {
+    const chunk = tokens.slice(i, i + 100);
+    const messages = chunk.map(to => ({ to, title: msg.title, body: msg.body, sound: 'default', ...(msg.data ? { data: msg.data } : {}) }));
+    try {
+      const res = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST', headers: { 'content-type': 'application/json', 'accept': 'application/json' }, body: JSON.stringify(messages),
+      });
+      const json: any = await res.json().catch(() => null);
+      const data = json?.data;
+      if (Array.isArray(data)) {
+        for (let j = 0; j < data.length; j++) {
+          const r = data[j];
+          if (r?.status === 'ok') pushed++;
+          else if (r?.details?.error === 'DeviceNotRegistered') await prisma.pushToken.deleteMany({ where: { token: chunk[j] } }).catch(() => {});
+        }
+      }
+    } catch { /* push gidemezse duyuru kaydı yine durur */ }
+  }
+  return pushed;
+}
+
+app.post('/api/announcements', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const p = z.object({
+    title: z.string().trim().min(3).max(80),
+    body: z.string().trim().min(1).max(500),
+    branchId: z.number().int().nullable().optional(),
+  }).safeParse(req.body);
+  if (!p.success) return bad(reply, p.error.issues[0]?.message || 'Geçersiz duyuru');
+  const branchId = p.data.branchId ?? null;
+  if (branchId != null && !(await prisma.branch.findUnique({ where: { id: branchId } }))) return bad(reply, 'Şube bulunamadı');
+  const where: any = { status: 'active', ...(branchId != null ? { branchId } : {}) };
+  const targets = await prisma.employee.findMany({ where, select: { id: true } });
+  const ann = await prisma.announcement.create({ data: {
+    title: p.data.title, body: p.data.body, audience: branchId != null ? 'branch' : 'all', branchId,
+    recipients: targets.length, createdBy: req.user.role || 'admin',
+  } });
+  const tokenRows = await prisma.pushToken.findMany({ where: { employeeId: { in: targets.map(t => t.id) } }, select: { token: true } });
+  const pushed = await sendExpoPush(tokenRows.map(t => t.token), { title: ann.title, body: ann.body, data: { announcementId: ann.id } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'duyuru', action: 'Duyuru gönderildi', detail: `${ann.title} · ${targets.length} çalışan` } });
+  return { ok: true, id: ann.id, recipients: targets.length, pushed };
+});
+
+app.get('/api/announcements', { preHandler: requireAdmin }, async () => {
+  const branches = await prisma.branch.findMany({ select: { id: true, name: true } });
+  const branchName = new Map(branches.map(b => [b.id, b.name]));
+  const list = await prisma.announcement.findMany({ orderBy: { createdAt: 'desc' }, take: 30 });
+  return list.map(a => ({
+    id: a.id, title: a.title, body: a.body, audience: a.audience,
+    branchId: a.branchId, branch: a.branchId != null ? (branchName.get(a.branchId) ?? `#${a.branchId}`) : null,
+    recipients: a.recipients, active: a.active, createdAt: a.createdAt,
+  }));
+});
+
+app.delete('/api/announcements/:id', { preHandler: requireAdmin }, async (req: any, reply) => {
+  const id = Number(req.params.id);
+  const a = await prisma.announcement.findUnique({ where: { id } });
+  if (!a) return reply.code(404).send({ error: 'Duyuru bulunamadı' });
+  await prisma.announcement.update({ where: { id }, data: { active: false } });
+  await prisma.auditLog.create({ data: { actor: req.user.role || 'admin', kind: 'duyuru', action: 'Duyuru geri çekildi', detail: a.title } });
+  return { ok: true };
 });
 
 // SQLite WAL modu: eşzamanlı okuma/yazma + güvenli sıcak yedek (cp/.backup tutarlı kalır)

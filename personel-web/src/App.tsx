@@ -20,6 +20,7 @@ import { RiskScore } from './screens/RiskScore'
 import { RiskSettings } from './screens/RiskSettings'
 import { Kvkk } from './screens/Kvkk'
 import { Reports } from './screens/Reports'
+import { Announcements } from './screens/Announcements'
 import { PerformanceReview } from './screens/PerformanceReview'
 import { EvaluationDetail } from './screens/EvaluationDetail'
 import { Stub } from './screens/Stub'
@@ -29,7 +30,10 @@ const ROLES: Record<Role, string> = { ik: 'İK-admin', mu: 'Muhasebe', su: 'Süp
 
 type NavItem = { id: string; label: string; icon: string; roles: Role[]; badge?: number }
 const NAV: { group: string; items: NavItem[] }[] = [
-  { group: 'Genel', items: [{ id: 'dashboard', label: 'Genel Bakış', icon: 'home', roles: ['ik', 'mu', 'su'] }] },
+  { group: 'Genel', items: [
+    { id: 'dashboard', label: 'Genel Bakış', icon: 'home', roles: ['ik', 'mu', 'su'] },
+    { id: 'announcements', label: 'Duyurular', icon: 'bell', roles: ['ik', 'su'] },
+  ] },
   { group: 'Operasyon', items: [
     { id: 'employees', label: 'Çalışanlar', icon: 'user', roles: ['ik', 'su'] },
     { id: 'branches', label: 'Şube & Tablet', icon: 'building', roles: ['ik', 'su'] },
@@ -58,7 +62,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
 const SCREENS: Record<string, () => React.ReactElement> = {
   dashboard: Dashboard, employees: Employees, employeeDetail: EmployeeDetail, branches: Branches, approvals: Approvals, audit: Audit,
   shifts: Shifts, holidays: Holidays, timesheet: Timesheet, anomaly: Anomaly, risk: RiskScore, risksettings: RiskSettings, kvkk: Kvkk, reports: Reports,
-  performance: PerformanceReview, evaluationDetail: EvaluationDetail,
+  performance: PerformanceReview, evaluationDetail: EvaluationDetail, announcements: Announcements,
 }
 
 export function App() {

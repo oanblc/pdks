@@ -53,7 +53,9 @@ export const api = {
   register: (body: { tc: string; name: string; phone?: string; address?: string; branchId?: number; password: string }) =>
     req('/api/employee/register', { method: 'POST', body: JSON.stringify(body) }) as Promise<{ ok: boolean }>,
   branches: () => req('/api/branches') as Promise<{ id: number; name: string; city: string; shift: string }[]>,
-  me: () => req('/api/me') as Promise<{ employee: Emp; today: { status: 'outside' | 'inside' | 'break'; entryTime: string | null; breakStart: string | null }; lateToleranceMin: number; branchGeo: { lat: number; lng: number; radius: number } | null; kioskCode: string | null; shiftStartAt: string | null; shiftEndAt: string | null; leave: { entitlement: number; used: number; pending: number; remaining: number } }>,
+  me: () => req('/api/me') as Promise<{ employee: Emp; today: { status: 'outside' | 'inside' | 'break'; entryTime: string | null; breakStart: string | null }; lateToleranceMin: number; branchGeo: { lat: number; lng: number; radius: number } | null; kioskCode: string | null; shiftStartAt: string | null; shiftEndAt: string | null; leave: { entitlement: number; used: number; pending: number; remaining: number }; announcement: { id: number; title: string; body: string; createdAt: string } | null }>,
+  registerPushToken: (token: string, platform: string) =>
+    req('/api/employee/push-token', { method: 'POST', body: JSON.stringify({ token, platform }) }) as Promise<{ ok: boolean }>,
   punch: (branchId: number, action: string, coords?: { lat: number; lng: number }, deviceCode?: string, extra?: { clientId?: string; clientTime?: string }) =>
     req('/api/punch', { method: 'POST', body: JSON.stringify({ branchId, action, ...(coords || {}), ...(deviceCode ? { deviceCode } : {}), ...(extra || {}) }) }) as Promise<{ ok: boolean; action: string; time: string; duplicate?: boolean }>,
   branchSetLocation: (lat: number, lng: number, force = false) =>
@@ -97,7 +99,7 @@ export const api = {
   // KVKK veri talebi
   dataRequest: (type: 'access' | 'rectify' | 'erase', note?: string) =>
     req('/api/data-request', { method: 'POST', body: JSON.stringify({ type, note }) }) as Promise<{ ok: boolean }>,
-  notifications: () => req('/api/notifications') as Promise<{ icon: string; tone: string; title: string; body: string; time: string }[]>,
+  notifications: () => req('/api/notifications') as Promise<{ id?: string; icon: string; tone: string; title: string; body: string; time: string }[]>,
 };
 
 export type EvalCriterion = { id: string; label: string; hint?: string; category?: string; weight: number; kind: string };
